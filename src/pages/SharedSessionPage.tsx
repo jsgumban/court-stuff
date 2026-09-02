@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useParams } from 'react-router';
-import { computeBill, matchesFromSlots } from '../lib/billing';
+import { Breakdown } from '../components/Breakdown';
+import { PaymentQR, hasPayment } from '../components/PaymentQR';
+import { Sheet } from '../components/Sheet';
+import { computeBill, matchesFromSlots, type LineBill, type SessionBill } from '../lib/billing';
 import { canShare, copyText, shareText } from '../lib/browser';
 import { cx } from '../lib/cx';
 import { buildChatMessage, formatDateLong, formatDateShort, formatMoney, lineFormula, pluralGames } from '../lib/format';
@@ -13,6 +16,7 @@ export default function SharedSessionPage() {
   const { token } = useParams<{ token: string }>();
   const [state, setState] = useState<State>({ kind: 'loading' });
   const [copied, setCopied] = useState(false);
+  const [openPerson, setOpenPerson] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -130,21 +134,31 @@ export default function SharedSessionPage() {
         <h2 className="mb-2 mt-6 px-1 text-xs font-semibold uppercase tracking-wide text-muted">
           Who owes what ({bill.headcount})
         </h2>
+        <p className="mb-2 px-1 text-xs text-muted">Tap your name to see how your share was worked out.</p>
         <ul className="space-y-2">
           {bill.lines.map((line, i) => (
-            <li key={line.entry.id} className={cx('card flex items-center gap-3 p-3.5', line.entry.paid && 'border-ok/40 bg-ok-soft/30')}>
-              <span className="num w-5 shrink-0 text-right text-xs text-muted">{i + 1}</span>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                  <span className="truncate font-medium">{line.entry.label}</span>
-                  {line.entry.isVisitor && <span className="pill bg-warn-soft text-warn">visitor</span>}
+            <li key={line.entry.id}>
+              <button
+                onClick={() => setOpenPerson(line.entry.id)}
+                className={cx(
+                  'card flex w-full items-center gap-3 p-3.5 text-left transition hover:border-ink/25',
+                  line.entry.paid && 'border-ok/40 bg-ok-soft/30',
+                )}
+              >
+                <span className="num w-5 shrink-0 text-right text-xs text-muted">{i + 1}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <span className="truncate font-medium">{line.entry.label}</span>
+                    {line.entry.isVisitor && <span className="pill bg-warn-soft text-warn">visitor</span>}
+                  </div>
+                  <div className="num mt-0.5 text-xs text-muted">{lineFormula(line, bill, c)}</div>
                 </div>
-                <div className="num mt-0.5 text-xs text-muted">{lineFormula(line, bill, c)}</div>
-              </div>
-              <div className="shrink-0 text-right">
-                <div className="num text-lg font-semibold leading-tight">{formatMoney(line.total, c)}</div>
-                <div className={cx('text-xs font-medium', line.entry.paid ? 'text-ok' : 'text-muted')}>{line.entry.paid ? '✓ Paid' : 'Unpaid'}</div>
-              </div>
+                <div className="shrink-0 text-right">
+                  <div className="num text-lg font-semibold leading-tight">{formatMoney(line.total, c)}</div>
+                  <div className={cx('text-xs font-medium', line.entry.paid ? 'text-ok' : 'text-muted')}>{line.entry.paid ? '✓ Paid' : 'Unpaid'}</div>
+                </div>
+                <span className="shrink-0 text-muted">›</span>
+              </button>
             </li>
           ))}
         </ul>
@@ -154,6 +168,10 @@ export default function SharedSessionPage() {
             <h2 className="stat-label">Note from the organiser</h2>
             <p className="mt-1 whitespace-pre-wrap text-sm">{session.notes.trim()}</p>
           </section>
+        )}
+
+        {hasPayment(display?.payment) && (
+          <PaymentQR payment={display.payment!} className="mt-4" />
         )}
 
         <div className="mt-6 flex flex-wrap justify-center gap-2">
@@ -174,7 +192,43 @@ export default function SharedSessionPage() {
           This is a read-only view. Only the organiser can change the bill.
         </p>
       </main>
+
+      <PersonBreakdownSheet
+        line={bill.lines.find((l) => l.entry.id === openPerson)}
+        bill={bill}
+        currency={c}
+        visitorFeeLabel={display?.visitorFeeLabel}
+        payment={display?.payment}
+        onClose={() => setOpenPerson(null)}
+      />
     </div>
+  );
+}
+
+function PersonBreakdownSheet({
+  line,
+  bill,
+  currency,
+  visitorFeeLabel,
+  payment,
+  onClose,
+}: {
+  line?: LineBill;
+  bill: SessionBill;
+  currency: string;
+  visitorFeeLabel?: string;
+  payment?: SharedBill['display']['payment'];
+  onClose: () => void;
+}) {
+  if (!line) return null;
+  return (
+    <Sheet open onClose={onClose} title={line.entry.label} subtitle={line.entry.paid ? 'Already paid — thank you' : 'Not yet paid'}>
+      <Breakdown line={line} bill={bill} currency={currency} visitorFeeLabel={visitorFeeLabel} />
+      {!line.entry.paid && hasPayment(payment) && <PaymentQR payment={payment!} amount={line.total} currency={currency} className="mt-3" />}
+      <p className="mt-3 text-center text-xs text-muted">
+        Only the organiser can change this. Tell them once you have paid.
+      </p>
+    </Sheet>
   );
 }
 

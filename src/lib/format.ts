@@ -124,6 +124,14 @@ export function buildChatMessage(session: Session, bill: SessionBill, settings: 
     out.push('');
   });
 
+  const pay = settings.payment;
+  if (pay && (pay.channel || pay.accountNumber)) {
+    const who = pay.accountName ? ` (${pay.accountName})` : '';
+    out.push(`Pay via ${[pay.channel, pay.accountNumber].filter(Boolean).join(' ')}${who}`.trim());
+    if (pay.note?.trim()) out.push(pay.note.trim());
+    out.push('');
+  }
+
   out.push(`Total = ${formatMoney(bill.billed, c)}`);
   out.push(`Paid = ${formatMoney(bill.collected, c)} (${bill.paidCount}/${bill.headcount})`);
   out.push(`Unpaid = ${formatMoney(bill.outstanding, c)}`);

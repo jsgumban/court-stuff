@@ -64,6 +64,17 @@ export interface Entry extends Synced {
   order: number;
 }
 
+/** Where people should send the money. Shown in the app and on a shared bill. */
+export interface PaymentInfo {
+  /** e.g. GCash, Maya, BPI */
+  channel?: string;
+  accountName?: string;
+  accountNumber?: string;
+  /** The QR image as a data URL, resized before it is stored. */
+  qrImage?: string;
+  note?: string;
+}
+
 export interface Settings extends Partial<Synced> {
   key: 'app';
   currency: string;
@@ -75,6 +86,7 @@ export interface Settings extends Partial<Synced> {
   defaultLightsSplit: SplitMode;
   /** Used for the "24 game slots = 6 doubles matches" sanity hint. 4 = doubles, 2 = singles. */
   playersPerGame: number;
+  payment?: PaymentInfo;
 }
 
 export const DEFAULT_SETTINGS: Settings = {

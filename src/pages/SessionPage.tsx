@@ -1,9 +1,10 @@
 import { useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
+import { Breakdown } from '../components/Breakdown';
 import { ConfirmButton } from '../components/ConfirmButton';
 import { Loading } from '../components/EmptyState';
 import { Field, NumberField, TextAreaField, TextField } from '../components/Fields';
-import { Segmented } from '../components/Segmented';
+import { PaymentQR, hasPayment } from '../components/PaymentQR';
 import { ShareCard } from '../components/ShareCard';
 import { Sheet } from '../components/Sheet';
 import { Stepper } from '../components/Stepper';
@@ -33,7 +34,6 @@ import { buildChatMessage, formatDateLong, formatDateShort, formatMoney, lineFor
 import type { Entry, Player, Rounding, Session, Settings, SplitMode } from '../lib/types';
 import NotFound from './NotFound';
 
-type Mode = 'tally' | 'payments';
 type OpenSheet = null | 'costs' | 'details' | 'share' | { person: string };
 
 export default function SessionPage() {
@@ -43,7 +43,6 @@ export default function SessionPage() {
   const settings = useSettings();
   const players = usePlayers();
   const sessions = useSessions();
-  const [mode, setMode] = useState<Mode>('tally');
   const [sheet, setSheet] = useState<OpenSheet>(null);
 
   if (session === undefined || !entries || !settings) return <Loading />;
@@ -125,39 +124,25 @@ export default function SessionPage() {
         )}
       </section>
 
-      {/* One list, two lenses */}
-      <Segmented
-        value={mode}
-        onChange={setMode}
-        options={[
-          { value: 'tally', label: 'Games', badge: String(bill.totalGames) },
-          { value: 'payments', label: 'Payments', badge: `${bill.paidCount}/${bill.headcount}` },
-        ]}
-      />
-
-      {mode === 'tally' && <AddPeople session={session} entries={entries} players={players ?? []} previous={previous} />}
+      <AddPeople session={session} entries={entries} players={players ?? []} previous={previous} />
 
       {bill.lines.length === 0 ? (
         <p className="px-1 py-8 text-center text-sm text-muted">
           No one on this bill yet. Add the people who played and each starts at one game.
         </p>
-      ) : mode === 'tally' ? (
-        <ul className="space-y-2">
-          {bill.lines.map((line) => (
-            <TallyRow key={line.entry.id} line={line} bill={bill} currency={c} onOpen={() => setSheet({ person: line.entry.id })} />
-          ))}
-        </ul>
       ) : (
         <>
-          <div className="flex items-center justify-between px-1">
-            <p className="text-xs text-muted">Tap a name to mark it paid.</p>
+          <div className="flex items-center justify-between px-1 pt-1">
+            <p className="num text-xs text-muted">
+              {pluralGames(bill.totalGames)} · {bill.paidCount} of {bill.headcount} paid
+            </p>
             <button className="btn btn-ghost btn-sm" onClick={() => setAllPaid(session.id, bill.paidCount < bill.headcount)}>
               {bill.paidCount < bill.headcount ? 'Mark all paid' : 'Unmark all'}
             </button>
           </div>
           <ul className="space-y-2">
             {bill.lines.map((line) => (
-              <PaymentRow key={line.entry.id} line={line} currency={c} />
+              <PersonRow key={line.entry.id} line={line} bill={bill} currency={c} onOpen={() => setSheet({ person: line.entry.id })} />
             ))}
           </ul>
         </>
@@ -166,7 +151,7 @@ export default function SessionPage() {
       <CostsSheet open={sheet === 'costs'} onClose={() => setSheet(null)} session={session} bill={bill} settings={settings} />
       <DetailsSheet open={sheet === 'details'} onClose={() => setSheet(null)} session={session} sessions={sessions ?? []} />
       <ShareSheet open={sheet === 'share'} onClose={() => setSheet(null)} session={session} bill={bill} settings={settings} />
-      <PersonSheet line={personSheet} bill={bill} currency={c} onClose={() => setSheet(null)} />
+      <PersonSheet line={personSheet} bill={bill} currency={c} settings={settings} onClose={() => setSheet(null)} />
     </div>
   );
 }
@@ -181,56 +166,38 @@ function Cell({ label, value, tone, divider }: { label: string; value: string; t
 }
 
 // ---------------------------------------------------------------------------
-// Rows
+// One row does both jobs: tick when they pay, step the games while you play.
 
-function TallyRow({ line, bill, currency, onOpen }: { line: LineBill; bill: SessionBill; currency: string; onOpen: () => void }) {
+function PersonRow({ line, bill, currency, onOpen }: { line: LineBill; bill: SessionBill; currency: string; onOpen: () => void }) {
   const e = line.entry;
   return (
-    <li className="card px-3 py-2.5">
-      <div className="flex items-center gap-2">
+    <li className={cx('card px-3 py-2.5 transition', e.paid && 'border-ok/40 bg-ok-soft/30')}>
+      <div className="flex items-center gap-2.5">
+        <button
+          onClick={() => setEntryPaid(e.id, !e.paid)}
+          aria-pressed={e.paid}
+          aria-label={e.paid ? `Mark ${e.label} unpaid` : `Mark ${e.label} paid`}
+          className={cx(
+            'grid h-11 w-11 shrink-0 place-items-center rounded-full transition active:scale-95',
+            e.paid ? 'text-ok' : 'text-muted hover:text-ink',
+          )}
+        >
+          <span className={cx('grid h-7 w-7 place-items-center rounded-full border text-sm', e.paid ? 'border-ok bg-ok text-white' : 'border-line text-transparent')}>
+            ✓
+          </span>
+        </button>
         <button onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-2 py-1 text-left">
           <span className="truncate font-medium">{e.label}</span>
           {e.isVisitor && <span className="pill shrink-0 bg-warn-soft text-warn">visitor</span>}
         </button>
+        <span className={cx('num shrink-0 font-semibold', e.paid && 'text-ok')}>{formatMoney(line.total, currency)}</span>
+      </div>
+      <div className="mt-0.5 flex items-center justify-between gap-2 pl-[3.375rem]">
+        <button onClick={onOpen} className="num min-w-0 truncate text-left text-xs text-muted hover:text-ink">
+          {lineFormula(line, bill, currency)}
+        </button>
         <Stepper value={e.games} onChange={(v) => updateEntry(e.id, { games: v })} className="shrink-0" />
       </div>
-      <div className="mt-0.5 flex items-baseline justify-between gap-2">
-        <span className="num truncate text-xs text-muted">{lineFormula(line, bill, currency)}</span>
-        <span className="num shrink-0 font-semibold">{formatMoney(line.total, currency)}</span>
-      </div>
-    </li>
-  );
-}
-
-function PaymentRow({ line, currency }: { line: LineBill; currency: string }) {
-  const e = line.entry;
-  return (
-    <li>
-      <button
-        onClick={() => setEntryPaid(e.id, !e.paid)}
-        aria-pressed={e.paid}
-        className={cx(
-          'card flex w-full items-center gap-3 px-3 py-3 text-left transition active:scale-[0.995]',
-          e.paid ? 'border-ok/40 bg-ok-soft/40' : 'hover:border-ink/25',
-        )}
-      >
-        <span
-          className={cx(
-            'grid h-7 w-7 shrink-0 place-items-center rounded-full border text-sm',
-            e.paid ? 'border-ok bg-ok text-white' : 'border-line text-transparent',
-          )}
-        >
-          ✓
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-2">
-            <span className="truncate font-medium">{e.label}</span>
-            {e.isVisitor && <span className="pill shrink-0 bg-warn-soft text-warn">visitor</span>}
-          </span>
-          <span className="num block text-xs text-muted">{pluralGames(e.games)}</span>
-        </span>
-        <span className={cx('num shrink-0 font-semibold', e.paid && 'text-ok')}>{formatMoney(line.total, currency)}</span>
-      </button>
     </li>
   );
 }
@@ -556,15 +523,32 @@ function ShareSheet({
   );
 }
 
-function PersonSheet({ line, bill, currency, onClose }: { line?: LineBill; bill: SessionBill; currency: string; onClose: () => void }) {
+function PersonSheet({
+  line,
+  bill,
+  currency,
+  settings,
+  onClose,
+}: {
+  line?: LineBill;
+  bill: SessionBill;
+  currency: string;
+  settings: Settings;
+  onClose: () => void;
+}) {
   if (!line) return null;
   const e = line.entry;
   const lines = bill.lines;
   const index = lines.findIndex((l) => l.entry.id === e.id);
 
   return (
-    <Sheet open onClose={onClose} title={e.label} subtitle={`${lineFormula(line, bill, currency)} = ${formatMoney(line.total, currency)}`}>
-      <div className="grid gap-3">
+    <Sheet open onClose={onClose} title={e.label} subtitle={e.paid ? 'Already paid' : 'Not yet paid'}>
+      <Breakdown line={line} bill={bill} currency={currency} visitorFeeLabel={settings.visitorFeeLabel} />
+      {hasPayment(settings.payment) && !e.paid && (
+        <PaymentQR payment={settings.payment!} amount={line.total} currency={currency} className="mt-3" />
+      )}
+
+      <div className="mt-4 grid gap-3 border-t border-line pt-4">
         <Field label="Name on the bill">
           <TextField value={e.label} onCommit={(v) => updateEntry(e.id, { label: v.trim() || e.label })} />
         </Field>

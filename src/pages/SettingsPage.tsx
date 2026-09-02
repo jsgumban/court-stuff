@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { ConfirmButton } from '../components/ConfirmButton';
 import { Loading } from '../components/EmptyState';
 import { Field, NumberField, TextField } from '../components/Fields';
+import { PaymentCard } from '../components/PaymentCard';
 import { SnapshotCard } from '../components/SnapshotCard';
 import { SyncCard } from '../components/SyncCard';
 import { useToast } from '../components/Toast';
@@ -58,6 +59,7 @@ export default function SettingsPage() {
 
       <SnapshotCard />
       <SyncCard />
+      <PaymentCard settings={settings} />
 
       <section className="card p-4">
         <h2 className="font-semibold">Defaults for new sessions</h2>

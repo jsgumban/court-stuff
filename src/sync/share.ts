@@ -1,10 +1,10 @@
-import type { Entry, Session } from '../lib/types';
+import type { Entry, PaymentInfo, Session } from '../lib/types';
 import { supabase } from './supabase';
 
 export interface SharedBill {
   session: Session;
   entries: Entry[];
-  display: { currency: string; visitorFeeLabel: string; playersPerGame: number };
+  display: { currency: string; visitorFeeLabel: string; playersPerGame: number; payment?: PaymentInfo };
   sharedAt: string;
 }
 
