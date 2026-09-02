@@ -3,6 +3,7 @@ import { Route, Routes } from 'react-router';
 import { Layout } from './components/Layout';
 import { ToastProvider } from './components/Toast';
 import { requestPersistentStorage } from './lib/browser';
+import { sync } from './sync/engine';
 import NotFound from './pages/NotFound';
 import PlayerPage from './pages/PlayerPage';
 import PlayersPage from './pages/PlayersPage';
@@ -13,6 +14,7 @@ import SettingsPage from './pages/SettingsPage';
 export default function App() {
   useEffect(() => {
     void requestPersistentStorage();
+    sync.start();
   }, []);
 
   return (

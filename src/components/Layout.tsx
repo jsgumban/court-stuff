@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router';
 import { cx } from '../lib/cx';
+import { SyncIndicator } from './SyncIndicator';
 
 const tabs = [
   {
@@ -49,20 +50,23 @@ export function Layout() {
             </span>
             Court Bills
           </NavLink>
-          <nav className="hidden gap-1 md:flex">
-            {tabs.map((t) => (
-              <NavLink
-                key={t.to}
-                to={t.to}
-                end={t.to === '/'}
-                className={({ isActive }) =>
-                  cx('rounded-lg px-3 py-1.5 text-sm font-medium', isActive ? 'bg-surface-2 text-ink' : 'text-muted hover:text-ink')
-                }
-              >
-                {t.label}
-              </NavLink>
-            ))}
-          </nav>
+          <div className="flex items-center gap-1">
+            <nav className="hidden gap-1 md:flex">
+              {tabs.map((t) => (
+                <NavLink
+                  key={t.to}
+                  to={t.to}
+                  end={t.to === '/'}
+                  className={({ isActive }) =>
+                    cx('rounded-lg px-3 py-1.5 text-sm font-medium', isActive ? 'bg-surface-2 text-ink' : 'text-muted hover:text-ink')
+                  }
+                >
+                  {t.label}
+                </NavLink>
+              ))}
+            </nav>
+            <SyncIndicator />
+          </div>
         </div>
       </header>
 

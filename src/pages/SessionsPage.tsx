@@ -7,12 +7,14 @@ import { createSession, seedSample } from '../db/repo';
 import { useSessionSummaries, useSettings } from '../hooks/useData';
 import { formatMoney, formatMonth, pluralGames, todayISO } from '../lib/format';
 import type { SessionSummary } from '../lib/stats';
+import { useSync } from '../sync/engine';
 
 export default function SessionsPage() {
   const summaries = useSessionSummaries();
   const settings = useSettings();
   const navigate = useNavigate();
   const toast = useToast();
+  const syncState = useSync();
 
   if (!summaries || !settings) return <Loading />;
   const c = settings.currency;
@@ -34,10 +36,21 @@ export default function SessionsPage() {
         <EmptyState
           icon="🏸"
           title="No sessions yet"
-          body="Start a session for tonight, or load the Malindang 9/2/2026 bill to see how the app splits lights per game."
+          body={
+            syncState.status === 'syncing'
+              ? 'Pulling your sessions from the cloud…'
+              : syncState.status === 'signed-out'
+                ? 'Sign in to pull your sessions from the cloud, start a new one, or load the Malindang 9/2/2026 example.'
+                : 'Start a session for tonight, or load the Malindang 9/2/2026 bill to see how the app splits lights per game.'
+          }
           actions={
             <>
-              <button className="btn btn-primary" onClick={onNew}>
+              {syncState.status === 'signed-out' && (
+                <Link to="/settings" className="btn btn-primary">
+                  Sign in to sync
+                </Link>
+              )}
+              <button className={syncState.status === 'signed-out' ? 'btn' : 'btn btn-primary'} onClick={onNew}>
                 New session
               </button>
               <button className="btn" onClick={onSample}>

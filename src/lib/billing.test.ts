@@ -14,6 +14,7 @@ const entries: Entry[] = SAMPLE_LINES.map((l, i) => ({
   extra: 0,
   paid: l.paid,
   order: i,
+  updatedAt: 0,
 }));
 
 describe('Malindang 9/2/2026 sample', () => {

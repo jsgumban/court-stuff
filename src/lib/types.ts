@@ -6,7 +6,16 @@ export type Rounding = 'exact' | 'peso' | 'five';
 
 export type SessionStatus = 'open' | 'closed';
 
-export interface Player {
+/** The four synced collections. */
+export type Collection = 'players' | 'sessions' | 'entries' | 'settings';
+
+/** Fields every synced row carries. `dirty` = 1 means "changed locally, not yet uploaded". */
+export interface Synced {
+  updatedAt: number;
+  dirty?: number;
+}
+
+export interface Player extends Synced {
   id: string;
   name: string;
   /** Regulars are not charged the visitor fee by default. */
@@ -23,7 +32,7 @@ export interface SharedCost {
   split: SplitMode;
 }
 
-export interface Session {
+export interface Session extends Synced {
   id: string;
   /** ISO date, YYYY-MM-DD (local). */
   date: string;
@@ -36,11 +45,10 @@ export interface Session {
   notes?: string;
   status: SessionStatus;
   createdAt: number;
-  updatedAt: number;
 }
 
 /** One billed line in a session. Usually one per player, but a player may have several (e.g. "Daryll" and "Daryll (visitor)"). */
-export interface Entry {
+export interface Entry extends Synced {
   id: string;
   sessionId: string;
   playerId?: string;
@@ -56,7 +64,7 @@ export interface Entry {
   order: number;
 }
 
-export interface Settings {
+export interface Settings extends Partial<Synced> {
   key: 'app';
   currency: string;
   defaultCourt: string;
@@ -80,6 +88,21 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultLightsSplit: 'perGame',
   playersPerGame: 4,
 };
+
+/** A local deletion that still has to be uploaded. */
+export interface Tombstone {
+  collection: Collection;
+  id: string;
+  deletedAt: number;
+}
+
+export interface SyncStateRow {
+  key: 'state';
+  userId?: string;
+  /** synced_at of the last remote row applied (ISO timestamp). */
+  cursor?: string;
+  lastSyncAt?: number;
+}
 
 /** Shape of an exported backup file. */
 export interface BackupFile {

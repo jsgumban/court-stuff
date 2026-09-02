@@ -6,12 +6,23 @@ import { SAMPLE_LINES, SAMPLE_SESSION } from '../lib/sample';
 import {
   DEFAULT_SETTINGS,
   type BackupFile,
+  type Collection,
   type Entry,
   type Player,
   type Session,
   type Settings,
   type SharedCost,
+  type Tombstone,
 } from '../lib/types';
+
+/**
+ * Every write to the local database goes through this file.
+ * Rows are stamped `updatedAt` + `dirty: 1` so the sync engine knows what to upload;
+ * deletions leave a tombstone for the same reason.
+ */
+
+const stamp = () => ({ updatedAt: Date.now(), dirty: 1 });
+const tomb = (collection: Collection, id: string): Tombstone => ({ collection, id, deletedAt: Date.now() });
 
 // ---------- settings ----------
 
@@ -22,7 +33,7 @@ export async function getSettings(): Promise<Settings> {
 
 export async function saveSettings(patch: Partial<Settings>): Promise<void> {
   const current = await getSettings();
-  await db.settings.put({ ...current, ...patch, key: 'app' });
+  await db.settings.put({ ...current, ...patch, key: 'app', ...stamp() });
 }
 
 // ---------- sessions ----------
@@ -41,21 +52,23 @@ export async function createSession(overrides: Partial<Session> = {}): Promise<s
     otherCosts: [],
     status: 'open',
     createdAt: now,
-    updatedAt: now,
     ...overrides,
+    ...stamp(),
   };
   await db.sessions.add(session);
   return session.id;
 }
 
 export async function updateSession(id: string, patch: Partial<Omit<Session, 'id'>>): Promise<void> {
-  await db.sessions.update(id, { ...patch, updatedAt: Date.now() });
+  await db.sessions.update(id, { ...patch, ...stamp() });
 }
 
 export async function deleteSession(id: string): Promise<void> {
-  await db.transaction('rw', db.sessions, db.entries, async () => {
+  await db.transaction('rw', db.sessions, db.entries, db.tombstones, async () => {
+    const entryIds = (await db.entries.where('sessionId').equals(id).primaryKeys()) as string[];
     await db.entries.where('sessionId').equals(id).delete();
     await db.sessions.delete(id);
+    await db.tombstones.bulkPut([...entryIds.map((eid) => tomb('entries', eid)), tomb('sessions', id)]);
   });
 }
 
@@ -74,7 +87,7 @@ export async function duplicateSession(sourceId: string): Promise<string> {
       status: 'open',
       notes: undefined,
       createdAt: now,
-      updatedAt: now,
+      ...stamp(),
     });
     await db.entries.bulkAdd(
       lines.map((e, i) => ({
@@ -87,6 +100,7 @@ export async function duplicateSession(sourceId: string): Promise<string> {
         extra: 0,
         paid: false,
         order: i,
+        ...stamp(),
       })),
     );
   });
@@ -127,7 +141,7 @@ export async function findPlayerByName(name: string): Promise<Player | undefined
 export async function ensurePlayer(name: string, isRegular: boolean): Promise<Player> {
   const existing = await findPlayerByName(name);
   if (existing) {
-    if (!existing.active) await db.players.update(existing.id, { active: true });
+    if (!existing.active) await db.players.update(existing.id, { active: true, ...stamp() });
     return existing;
   }
   const player: Player = {
@@ -136,6 +150,7 @@ export async function ensurePlayer(name: string, isRegular: boolean): Promise<Pl
     isRegular,
     active: true,
     createdAt: Date.now(),
+    ...stamp(),
   };
   await db.players.add(player);
   return player;
@@ -146,35 +161,41 @@ export async function createPlayer(name: string, isRegular = true): Promise<Play
 }
 
 export async function updatePlayer(id: string, patch: Partial<Omit<Player, 'id'>>): Promise<void> {
-  await db.players.update(id, patch);
+  await db.players.update(id, { ...patch, ...stamp() });
 }
 
 /** Removes the player from the roster; past bill lines keep their label but lose the link. */
 export async function deletePlayer(id: string): Promise<void> {
-  await db.transaction('rw', db.players, db.entries, async () => {
+  await db.transaction('rw', db.players, db.entries, db.tombstones, async () => {
     await db.entries
       .where('playerId')
       .equals(id)
       .modify((e) => {
         delete e.playerId;
+        Object.assign(e, stamp());
       });
     await db.players.delete(id);
+    await db.tombstones.put(tomb('players', id));
   });
 }
 
 /** Moves every bill line of `fromId` to `intoId`, then removes `fromId`. Fixes duplicate roster names. */
 export async function mergePlayers(fromId: string, intoId: string): Promise<void> {
   if (fromId === intoId) return;
-  await db.transaction('rw', db.players, db.entries, async () => {
-    await db.entries.where('playerId').equals(fromId).modify({ playerId: intoId });
+  await db.transaction('rw', db.players, db.entries, db.tombstones, async () => {
+    await db.entries.where('playerId').equals(fromId).modify({ playerId: intoId, ...stamp() });
     await db.players.delete(fromId);
+    await db.tombstones.put(tomb('players', fromId));
   });
 }
 
 // ---------- entries (bill lines) ----------
 
 async function nextOrder(sessionId: string): Promise<number> {
-  const last = await db.entries.where('[sessionId+order]').between([sessionId, Dexie.minKey], [sessionId, Dexie.maxKey]).last();
+  const last = await db.entries
+    .where('[sessionId+order]')
+    .between([sessionId, Dexie.minKey], [sessionId, Dexie.maxKey])
+    .last();
   return last ? last.order + 1 : 0;
 }
 
@@ -209,6 +230,7 @@ export async function addEntry(sessionId: string, input: AddEntryInput): Promise
       extra: 0,
       paid: false,
       order: await nextOrder(sessionId),
+      ...stamp(),
     };
     await db.entries.add(entry);
     return entry.id;
@@ -216,22 +238,25 @@ export async function addEntry(sessionId: string, input: AddEntryInput): Promise
 }
 
 export async function updateEntry(id: string, patch: Partial<Omit<Entry, 'id' | 'sessionId'>>): Promise<void> {
-  await db.entries.update(id, patch);
+  await db.entries.update(id, { ...patch, ...stamp() });
 }
 
 export async function setEntryPaid(id: string, paid: boolean): Promise<void> {
-  await db.entries.update(id, paid ? { paid: true, paidAt: Date.now() } : { paid: false, paidAt: undefined });
+  await db.entries.update(id, paid ? { paid: true, paidAt: Date.now(), ...stamp() } : { paid: false, paidAt: undefined, ...stamp() });
 }
 
 export async function setAllPaid(sessionId: string, paid: boolean): Promise<void> {
   await db.entries
     .where('sessionId')
     .equals(sessionId)
-    .modify(paid ? { paid: true, paidAt: Date.now() } : { paid: false, paidAt: undefined });
+    .modify(paid ? { paid: true, paidAt: Date.now(), ...stamp() } : { paid: false, paidAt: undefined, ...stamp() });
 }
 
 export async function removeEntry(id: string): Promise<void> {
-  await db.entries.delete(id);
+  await db.transaction('rw', db.entries, db.tombstones, async () => {
+    await db.entries.delete(id);
+    await db.tombstones.put(tomb('entries', id));
+  });
 }
 
 export async function moveEntry(id: string, direction: -1 | 1): Promise<void> {
@@ -245,7 +270,7 @@ export async function moveEntry(id: string, direction: -1 | 1): Promise<void> {
     // Normalise orders to 0..n-1 while we are at it.
     const reordered = [...siblings];
     [reordered[idx], reordered[idx + direction]] = [reordered[idx + direction], reordered[idx]];
-    await Promise.all(reordered.map((e, i) => db.entries.update(e.id, { order: i })));
+    await Promise.all(reordered.map((e, i) => (e.order === i ? null : db.entries.update(e.id, { order: i, ...stamp() }))));
   });
 }
 
@@ -290,7 +315,17 @@ export async function exportBackup(): Promise<BackupFile> {
     db.sessions.toArray(),
     db.entries.toArray(),
   ]);
-  return { app: 'court-bills', version: 1, exportedAt: new Date().toISOString(), settings, players, sessions, entries };
+  const clean = <T extends { dirty?: number }>(rows: T[]) => rows.map(({ dirty: _dirty, ...rest }) => rest as T);
+  const { dirty: _d, ...cleanSettings } = settings;
+  return {
+    app: 'court-bills',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    settings: cleanSettings as Settings,
+    players: clean(players),
+    sessions: clean(sessions),
+    entries: clean(entries),
+  };
 }
 
 export function parseBackup(text: string): BackupFile {
@@ -308,20 +343,71 @@ export function parseBackup(text: string): BackupFile {
 }
 
 export async function importBackup(backup: BackupFile, mode: 'replace' | 'merge'): Promise<void> {
-  await db.transaction('rw', db.players, db.sessions, db.entries, db.settings, async () => {
+  const now = Date.now();
+  await db.transaction('rw', db.players, db.sessions, db.entries, db.settings, db.tombstones, async () => {
     if (mode === 'replace') {
-      await Promise.all([db.players.clear(), db.sessions.clear(), db.entries.clear(), db.settings.clear()]);
+      // Everything currently here that is not in the file gets deleted (and, when synced, deleted in the cloud too).
+      const keep = {
+        players: new Set(backup.players.map((p) => p.id)),
+        sessions: new Set(backup.sessions.map((s) => s.id)),
+        entries: new Set(backup.entries.map((e) => e.id)),
+      };
+      const [pids, sids, eids] = await Promise.all([
+        db.players.toCollection().primaryKeys() as Promise<string[]>,
+        db.sessions.toCollection().primaryKeys() as Promise<string[]>,
+        db.entries.toCollection().primaryKeys() as Promise<string[]>,
+      ]);
+      await db.tombstones.bulkPut([
+        ...pids.filter((id) => !keep.players.has(id)).map((id) => tomb('players', id)),
+        ...sids.filter((id) => !keep.sessions.has(id)).map((id) => tomb('sessions', id)),
+        ...eids.filter((id) => !keep.entries.has(id)).map((id) => tomb('entries', id)),
+      ]);
+      await Promise.all([db.players.clear(), db.sessions.clear(), db.entries.clear()]);
     }
-    await db.players.bulkPut(backup.players);
-    await db.sessions.bulkPut(backup.sessions.map((s) => ({ ...s, otherCosts: s.otherCosts ?? [] })));
-    await db.entries.bulkPut(backup.entries);
-    if (backup.settings) await db.settings.put({ ...DEFAULT_SETTINGS, ...backup.settings, key: 'app' });
+    // Rows coming back from a backup must not stay deleted.
+    await db.tombstones.bulkDelete([
+      ...backup.players.map((p) => ['players', p.id] as [string, string]),
+      ...backup.sessions.map((s) => ['sessions', s.id] as [string, string]),
+      ...backup.entries.map((e) => ['entries', e.id] as [string, string]),
+    ]);
+    await db.players.bulkPut(backup.players.map((p) => ({ ...p, updatedAt: p.updatedAt ?? p.createdAt ?? now, dirty: 1 })));
+    await db.sessions.bulkPut(
+      backup.sessions.map((s) => ({ ...s, otherCosts: s.otherCosts ?? [], updatedAt: s.updatedAt ?? now, dirty: 1 })),
+    );
+    await db.entries.bulkPut(backup.entries.map((e) => ({ ...e, updatedAt: e.updatedAt ?? now, dirty: 1 })));
+    if (backup.settings) await db.settings.put({ ...DEFAULT_SETTINGS, ...backup.settings, key: 'app', ...stamp() });
   });
 }
 
-export async function clearAll(): Promise<void> {
-  await db.transaction('rw', db.players, db.sessions, db.entries, db.settings, async () => {
-    await Promise.all([db.players.clear(), db.sessions.clear(), db.entries.clear(), db.settings.clear()]);
+/**
+ * 'everywhere': deletes all bills, players and settings here and, once synced, in the cloud.
+ * 'device': wipes only this device, including sync bookkeeping, so it behaves like a fresh install.
+ */
+export async function clearAll(scope: 'everywhere' | 'device'): Promise<void> {
+  await db.transaction('rw', [db.players, db.sessions, db.entries, db.settings, db.tombstones, db.syncState], async () => {
+    if (scope === 'everywhere') {
+      const [pids, sids, eids] = await Promise.all([
+        db.players.toCollection().primaryKeys() as Promise<string[]>,
+        db.sessions.toCollection().primaryKeys() as Promise<string[]>,
+        db.entries.toCollection().primaryKeys() as Promise<string[]>,
+      ]);
+      await db.tombstones.bulkPut([
+        ...pids.map((id) => tomb('players', id)),
+        ...sids.map((id) => tomb('sessions', id)),
+        ...eids.map((id) => tomb('entries', id)),
+        tomb('settings', 'app'),
+      ]);
+      await Promise.all([db.players.clear(), db.sessions.clear(), db.entries.clear(), db.settings.clear()]);
+    } else {
+      await Promise.all([
+        db.players.clear(),
+        db.sessions.clear(),
+        db.entries.clear(),
+        db.settings.clear(),
+        db.tombstones.clear(),
+        db.syncState.clear(),
+      ]);
+    }
   });
 }
 

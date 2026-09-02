@@ -3,12 +3,14 @@ import { useNavigate } from 'react-router';
 import { ConfirmButton } from '../components/ConfirmButton';
 import { Loading } from '../components/EmptyState';
 import { Field, NumberField, TextField } from '../components/Fields';
+import { SyncCard } from '../components/SyncCard';
 import { useToast } from '../components/Toast';
 import { clearAll, exportBackup, importBackup, parseBackup, saveSettings, seedSample } from '../db/repo';
 import { usePlayers, useSessions, useSettings } from '../hooks/useData';
 import { downloadText } from '../lib/browser';
 import { todayISO } from '../lib/format';
 import type { Rounding, SplitMode } from '../lib/types';
+import { useSync } from '../sync/engine';
 
 export default function SettingsPage() {
   const settings = useSettings();
@@ -19,6 +21,8 @@ export default function SettingsPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [importMode, setImportMode] = useState<'merge' | 'replace'>('merge');
   const [persisted, setPersisted] = useState<boolean | null>(null);
+  const syncState = useSync();
+  const signedIn = !!syncState.user;
 
   useEffect(() => {
     navigator.storage?.persisted?.().then(setPersisted).catch(() => setPersisted(null));
@@ -50,6 +54,8 @@ export default function SettingsPage() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
+
+      <SyncCard />
 
       <section className="card p-4">
         <h2 className="font-semibold">Defaults for new sessions</h2>
@@ -91,8 +97,9 @@ export default function SettingsPage() {
       <section className="card p-4">
         <h2 className="font-semibold">Backup &amp; restore</h2>
         <p className="mt-1 text-sm text-muted">
-          Everything is stored only in this browser on this device ({sessions.length} {sessions.length === 1 ? 'session' : 'sessions'}, {players.length}{' '}
-          {players.length === 1 ? 'player' : 'players'}). Clearing site data or switching phones loses it, so export a backup now and then.
+          {signedIn
+            ? `This device holds ${sessions.length} ${sessions.length === 1 ? 'session' : 'sessions'} and ${players.length} ${players.length === 1 ? 'player' : 'players'}, mirrored to your cloud account. A JSON backup is still handy as an offline copy.`
+            : `Everything is stored only in this browser on this device (${sessions.length} ${sessions.length === 1 ? 'session' : 'sessions'}, ${players.length} ${players.length === 1 ? 'player' : 'players'}). Clearing site data or switching phones loses it, so export a backup now and then, or sign in above to sync.`}
         </p>
         <p className="mt-1 text-xs text-muted">
           Persistent storage: {persisted === true ? 'granted — the browser will not evict this data.' : persisted === false ? 'not granted — the browser may clear it under storage pressure.' : 'unknown on this browser.'}
@@ -137,16 +144,20 @@ export default function SettingsPage() {
 
       <section className="card border-bad/30 p-4">
         <h2 className="font-semibold text-bad">Danger zone</h2>
-        <p className="mt-1 text-sm text-muted">Deletes every session, player and setting on this device. Export a backup first.</p>
+        <p className="mt-1 text-sm text-muted">
+          {signedIn
+            ? 'Deletes every session, player and setting on this device and in your cloud account, so every signed-in device is wiped. Export a backup first.'
+            : 'Deletes every session, player and setting on this device. Export a backup first.'}
+        </p>
         <ConfirmButton
           className="mt-3"
           onConfirm={async () => {
-            await clearAll();
-            toast.show('All local data deleted');
+            await clearAll(signedIn ? 'everywhere' : 'device');
+            toast.show(signedIn ? 'All data deleted; the cloud copy is being cleared' : 'All local data deleted');
             navigate('/');
           }}
         >
-          Delete all data
+          {signedIn ? 'Delete all data everywhere' : 'Delete all data'}
         </ConfirmButton>
       </section>
     </div>

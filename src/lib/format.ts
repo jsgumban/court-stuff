@@ -46,6 +46,18 @@ export function formatMonth(iso: string): string {
   return parseISO(iso).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 }
 
+/** "just now", "3 min ago", "2 hr ago", "yesterday", "5 days ago" */
+export function timeAgo(ms: number, now = Date.now()): string {
+  const s = Math.max(0, Math.round((now - ms) / 1000));
+  if (s < 45) return 'just now';
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} hr ago`;
+  const d = Math.round(h / 24);
+  return d === 1 ? 'yesterday' : `${d} days ago`;
+}
+
 export function pluralGames(n: number): string {
   return `${formatNumber(n)} ${n === 1 ? 'game' : 'games'}`;
 }

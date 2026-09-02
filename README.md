@@ -54,11 +54,28 @@ Open it on a phone on the same Wi-Fi with `npm run dev -- --host`. On the Sessio
 - **Backup & restore.** Export/import a JSON file. The app also asks the browser for persistent storage.
 - Mobile-first, dark mode, installable (web manifest).
 
+## Cloud sync (Supabase)
+
+The app is local-first: every screen reads and writes the on-device database, so it works offline at the court. When Supabase credentials are present and you are signed in, a sync engine mirrors that database to your account:
+
+- Local edits are flagged and uploaded in the background (a few hundred ms after you stop typing). Deletions are uploaded as tombstones.
+- Remote changes are pulled on start, when the tab regains focus, when the network comes back, every two minutes, and instantly via Supabase Realtime when another device writes.
+- Conflicts resolve last-write-wins by timestamp; the database trigger refuses to overwrite a newer row with an older one.
+- Signing in on a device that already has data uploads that data. Signing in as a different account wipes the device first.
+
+### One-time setup
+
+1. Create a Supabase project, open the SQL editor, and run `supabase/schema.sql` (idempotent).
+2. In Authentication → Providers keep Email enabled. For a single user, create the account under Authentication → Users ("Add user", auto-confirm), then disable public sign-ups under Authentication → Settings.
+3. Copy the project URL and publishable (anon) key from Project Settings → API into `.env.local` (see `.env.example`) and into the Vercel project's environment variables, then redeploy.
+
 ## Where the data lives
 
-Everything is stored **only in this browser on this device**, in IndexedDB (via [Dexie](https://dexie.org)). Nothing is sent anywhere. Clearing site data or changing phones loses it, so use *Settings → Export backup* now and then.
+Locally: IndexedDB (via [Dexie](https://dexie.org)) in the browser profile of each device. Without sync configured, nothing leaves the device, so use *Settings → Export backup* now and then.
 
-All storage access goes through `src/db/repo.ts`. To sync across devices later, reimplement that file (or add a sync layer) against a backend; the UI and billing engine do not need to change.
+With sync: a single `sync_rows` table in your Supabase project holds each collection's rows as JSON, protected by Row Level Security so only your account can read them.
+
+All local writes go through `src/db/repo.ts`; all cloud traffic goes through `src/sync/engine.ts`.
 
 ## Layout
 
@@ -66,6 +83,8 @@ All storage access goes through `src/db/repo.ts`. To sync across devices later, 
 src/
   lib/        pure logic: types, billing.ts (the math), format.ts (money, dates, chat message), stats.ts
   db/         Dexie schema (db.ts) and repository functions (repo.ts): CRUD, backup, sample seed
+  sync/       Supabase client, sync engine (push/pull/realtime/auth), merge rules with tests
+supabase/     schema.sql to run once in the Supabase SQL editor
   hooks/      live queries that re-render the UI when the database changes
   components/ reusable UI (fields that commit on blur, stepper, switch, toast, layout)
   pages/      Sessions, Session (the bill), Players, Player, Settings
@@ -73,4 +92,4 @@ src/
 
 ## Stack
 
-React 19 · TypeScript · Vite · Tailwind CSS 4 · React Router (hash routing so it works on any static host) · Dexie (IndexedDB) · Vitest
+React 19 · TypeScript · Vite · Tailwind CSS 4 · React Router (hash routing so it works on any static host) · Dexie (IndexedDB) · Supabase (auth, Postgres, Realtime) · Vitest
