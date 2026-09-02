@@ -43,6 +43,8 @@ Open it on a phone on the same Wi-Fi with `npm run dev -- --host`. On the Sessio
 
 ## What it does
 
+The session header is an itemised statement rather than a single opaque figure. Every payable shows the division that produced it (₱600 ÷ 24 games = ₱25 per game), the visitor fees and extras get their own lines, and the lines add up to a stated "To collect". The same statement appears on the shared bill, so anyone can reconcile the total themselves.
+
 The session screen is built around how often things are actually done. The rate per game is the headline. Each person is one row that does both jobs: a tick on the left to mark them paid, a stepper on the right for their games, and the name in between opening their breakdown. One **Edit session** sheet holds everything about the night: court, date, every payable, visitor fee, rounding, the note, and the admin actions. Sharing and per-person details are the only other sheets, so there is never a modal on top of a modal.
 
 - **Cost per game.** Rate = the per-game payables ÷ total games across everyone. Each person pays games × rate. Visitors get the visitor fee added. Extras (water, shuttles, a discount) can be added per line.

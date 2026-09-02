@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useParams } from 'react-router';
 import { Breakdown } from '../components/Breakdown';
+import { CostSummary } from '../components/CostSummary';
 import { PaymentQR, hasPayment } from '../components/PaymentQR';
 import { Sheet } from '../components/Sheet';
 import { computeBill, matchesFromSlots, payablesOf, type LineBill, type SessionBill } from '../lib/billing';
 import { canShare, copyText, shareText } from '../lib/browser';
 import { cx } from '../lib/cx';
-import { buildChatMessage, formatDateLong, formatDateShort, formatMoney, lineFormula, pluralGames } from '../lib/format';
+import { buildChatMessage, formatDateLong, formatDateShort, formatMoney, lineFormula } from '../lib/format';
 import { DEFAULT_SETTINGS } from '../lib/types';
 import { fetchSharedBill, type SharedBill } from '../sync/share';
 
@@ -93,52 +94,32 @@ export default function SharedSessionPage() {
       </header>
 
       <main className="relative z-10 mx-auto -mt-8 max-w-2xl px-4">
-        {/* The rate, front and centre */}
-        {bill.perGamePool > 0 && (
-          <section className="card p-5 text-center shadow-md">
-            <div className="stat-label">Rate per game</div>
-            <div className="num mt-1 text-4xl font-semibold tracking-tight text-gold">{formatMoney(bill.rate, c)}</div>
-            <div className="num mt-2 text-sm text-muted">
-              {formatMoney(bill.perGamePool, c)} ÷ {pluralGames(bill.totalGames)}
-              {matches !== null && ` · ${matches} ${matches === 1 ? 'match' : 'matches'}`}
-            </div>
-          </section>
-        )}
-
-        {bill.equalPool > 0 && (
-          <section className="card mt-3 p-4 text-center">
-            <div className="stat-label">Split equally</div>
-            <div className="num mt-0.5 text-2xl font-semibold text-gold">{formatMoney(bill.equalShare, c)} each</div>
-            <div className="num mt-1 text-xs text-muted">
-              {formatMoney(bill.equalPool, c)} ÷ {bill.headcount} {bill.headcount === 1 ? 'person' : 'people'}
-            </div>
-          </section>
-        )}
-
-        {/* What the money was for */}
+        {/* What the money was for, and how each part was divided */}
         {payablesOf(session).length > 0 && (
-          <section className="card mt-3 overflow-hidden">
-            <h2 className="stat-label px-4 pt-3">What was paid for</h2>
-            <ul className="mt-1 divide-y divide-line">
-              {payablesOf(session).map((cost) => (
-                <li key={cost.id} className="flex items-center gap-3 px-4 py-2.5">
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium">{cost.label || 'Other'}</span>
-                    <span className="block text-xs text-muted">{cost.split === 'perGame' ? 'split by games played' : 'split equally'}</span>
-                  </span>
-                  <span className="num shrink-0 font-medium">{formatMoney(cost.amount, c)}</span>
-                </li>
-              ))}
-            </ul>
+          <section className="card mt-3 p-4">
+            <div className="flex items-baseline justify-between gap-2">
+              <h2 className="stat-label">What this night cost</h2>
+              {matches !== null && (
+                <span className="num text-xs text-muted">
+                  {matches} {matches === 1 ? 'match' : 'matches'}
+                </span>
+              )}
+            </div>
+            <CostSummary
+              session={session}
+              bill={bill}
+              currency={c}
+              visitorFeeLabel={display?.visitorFeeLabel}
+              className="mt-1"
+            />
           </section>
         )}
 
         {/* Totals */}
         <section className="card mt-3 p-4">
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <Total label="Total" value={formatMoney(bill.billed, c)} />
-            <Total label="Paid" value={formatMoney(bill.collected, c)} tone="text-ok" />
-            <Total label="Unpaid" value={formatMoney(bill.outstanding, c)} tone={bill.outstanding > 0 ? 'text-bad' : 'text-ok'} />
+          <div className="grid grid-cols-2 gap-2 text-center">
+            <Total label="Paid so far" value={formatMoney(bill.collected, c)} tone="text-ok" />
+            <Total label="Still unpaid" value={formatMoney(bill.outstanding, c)} tone={bill.outstanding > 0 ? 'text-bad' : 'text-ok'} />
           </div>
           <div className="mt-3 h-2 overflow-hidden rounded-full bg-line">
             <div className="h-full rounded-full bg-ok transition-all duration-700" style={{ width: `${pct}%` }} />

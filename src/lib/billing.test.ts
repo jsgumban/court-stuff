@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { computeBill, matchesFromSlots, roundRate } from './billing';
+import { costRows } from '../components/CostSummary';
 import { buildChatMessage } from './format';
 import { SAMPLE_LINES, SAMPLE_SESSION } from './sample';
 import { DEFAULT_SETTINGS, type Entry, type Payable, type Session } from './types';
@@ -155,5 +156,42 @@ describe('payables are all equal citizens', () => {
     expect(msg).toContain('Court rental = ₱600');
     expect(msg).toContain('- Court rental amount/games');
     expect(msg).toContain('Water = ₱170');
+  });
+});
+
+describe('the cost summary adds up in public', () => {
+  it('itemises every payable, the fees and the extras, reconciling to the total', () => {
+    const s: Session = {
+      ...session,
+      payables: [payable('Lights', 600), payable('Water', 340, 'equal')],
+    };
+    const withExtra = entries.map((e, i) => (i === 0 ? { ...e, extra: 40, extraNote: 'shuttles' } : e));
+    const bill = computeBill(s, withExtra);
+    const rows = costRows(s, bill, '₱');
+
+    expect(rows.map((r) => [r.label, r.amount])).toEqual([
+      ['Lights', 600],
+      ['Water', 340],
+      ['Visitor fee', 400],
+      ['shuttles', 40],
+    ]);
+    // Every line shows the division that produced it.
+    expect(rows[0].detail).toBe('₱600 ÷ 24 games = ₱25 per game');
+    expect(rows[1].detail).toBe('₱340 ÷ 17 people = ₱20 each');
+    expect(rows[2].detail).toBe('₱100 × 4 visitors');
+    // And the lines sum to what is actually collected.
+    expect(rows.reduce((sum, r) => sum + r.amount, 0)).toBe(bill.billed);
+  });
+
+  it('shows rounding as its own line so the total still reconciles', () => {
+    // ₱610 over 24 games is ₱25.42, rounded up to ₱30 a game, so more is collected than spent.
+    const s: Session = { ...session, payables: [payable('Lights', 610)], rounding: 'five' as const };
+    const bill = computeBill(s, entries);
+    expect(bill.rate).toBe(30);
+    const rows = costRows(s, bill, '₱');
+    const rounding = rows.find((r) => r.label === 'Rounding');
+    expect(rounding?.amount).toBe(bill.variance);
+    expect(rounding?.amount).toBeGreaterThan(0);
+    expect(rows.reduce((sum, r) => sum + r.amount, 0)).toBe(bill.billed);
   });
 });

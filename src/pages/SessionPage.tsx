@@ -2,6 +2,7 @@ import { useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { Breakdown } from '../components/Breakdown';
 import { ConfirmButton } from '../components/ConfirmButton';
+import { CostSummary } from '../components/CostSummary';
 import { Loading } from '../components/EmptyState';
 import { Field, NumberField, TextAreaField, TextField } from '../components/Fields';
 import { PayableList } from '../components/PayableList';
@@ -83,34 +84,23 @@ export default function SessionPage() {
           <span className="shrink-0 text-sm text-muted">Edit ›</span>
         </button>
 
-        <button className="w-full border-t border-line px-4 py-4 text-center hover:bg-surface-2" onClick={() => setSheet('edit')}>
-          {bill.perGamePool > 0 ? (
-            <>
-              <div className="num text-3xl font-semibold tracking-tight text-gold">{formatMoney(bill.rate, c)}</div>
-              <div className="stat-label mt-0.5">per game</div>
-              <div className="num mt-1.5 text-xs text-muted">
-                {formatMoney(bill.perGamePool, c)} ÷ {pluralGames(bill.totalGames)} · tap to edit
-              </div>
-            </>
+        <div className="border-t border-line px-4 py-3">
+          {payablesOf(session).length === 0 ? (
+            <button className="btn w-full" onClick={() => setSheet('edit')}>
+              Add what the night cost
+            </button>
           ) : (
             <>
-              <div className="text-sm font-medium">Add what the night cost</div>
-              <div className="mt-0.5 text-xs text-muted">Lights, shuttlecocks, court rental — tap to add them</div>
+              <CostSummary session={session} bill={bill} currency={c} visitorFeeLabel={settings.visitorFeeLabel} />
+              <button className="btn btn-ghost btn-sm mt-2 w-full" onClick={() => setSheet('edit')}>
+                Edit what was paid for
+              </button>
             </>
           )}
-          {bill.equalPool > 0 && (
-            <div className="num mt-1 text-xs text-muted">plus {formatMoney(bill.equalShare, c)} each, split equally</div>
-          )}
-          {bill.variance !== 0 && (
-            <div className="num mt-1 text-xs text-warn">
-              Rounding leaves the bill {formatMoney(Math.abs(bill.variance), c)} {bill.variance > 0 ? 'over' : 'short'}
-            </div>
-          )}
-        </button>
+        </div>
 
-        <div className="grid grid-cols-3 border-t border-line text-center">
-          <Cell label="Total" value={formatMoney(bill.billed, c)} />
-          <Cell label="Paid" value={formatMoney(bill.collected, c)} tone="text-ok" divider />
+        <div className="grid grid-cols-2 border-t border-line text-center">
+          <Cell label="Paid" value={formatMoney(bill.collected, c)} tone="text-ok" />
           <Cell label="Unpaid" value={formatMoney(bill.outstanding, c)} tone={bill.outstanding > 0 ? 'text-bad' : 'text-ok'} divider />
         </div>
         {bill.headcount > 0 && (
