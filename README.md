@@ -43,14 +43,14 @@ Open it on a phone on the same Wi-Fi with `npm run dev -- --host`. On the Sessio
 
 ## What it does
 
-The session screen is built around how often things are actually done. The rate per game is the headline. Each person is one row that does both jobs: a tick on the left to mark them paid, a stepper on the right for their games, and the name in between opening their breakdown. Costs, session details, per-person edits and sharing open as sheets, so the main screen stays a short scroll instead of a wall of controls.
+The session screen is built around how often things are actually done. The rate per game is the headline. Each person is one row that does both jobs: a tick on the left to mark them paid, a stepper on the right for their games, and the name in between opening their breakdown. One **Edit session** sheet holds everything about the night: court, date, every payable, visitor fee, rounding, the note, and the admin actions. Sharing and per-person details are the only other sheets, so there is never a modal on top of a modal.
 
 - **Lights per game.** Rate = lights ÷ total games across everyone. Each person pays games × rate. Visitors get the visitor fee added. Extras (water, shuttles, a discount) can be added per line.
 - **Paid tracking.** Tap *Mark paid* per person; the summary shows collected vs. unpaid, and the announcement puts ✅ next to paid names.
 - **Copy / Share announcement.** One tap copies the message in the group-chat format above (or opens the phone's share sheet).
 - **Two-step setup.** New session asks the court, date and lights cost, then who played. Paste a whole list of names at once, reuse last session's crowd or all regulars with one tap, and the session opens fully populated. Setting up a sixteen-person night takes about four taps.
 - **Quick roster.** Names are remembered. Chips add regulars in one tap; *All regulars* and *Same people as last session* fill a new night instantly. *Duplicate for today* clones a session's people and costs.
-- **Other shared costs.** Shuttlecocks, balls, court rental… each split per game (like lights) or equally per head.
+- **Payables, not just lights.** Shuttlecocks, balls, court rental, water and anything else sit in the same list as lights, each with its own amount and its own split (per game, or equally per head). Common ones are one-tap presets. Everything the money went to is listed on the shared bill too.
 - **Rounding.** Exact centavos, nearest ₱1, or round up to ₱5, with the over/short amount shown so the collector is never surprised.
 - **Sanity check.** Warns when the tally is not a whole number of doubles matches (24 slots = 6 matches; 23 slots is a typo).
 - **Players.** Per-person history, running debts across sessions, settle-all, merge duplicate spellings, archive.

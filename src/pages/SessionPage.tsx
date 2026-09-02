@@ -38,7 +38,7 @@ import { isPaymentSet, resolvePayment } from '../lib/payment';
 import type { Entry, PaymentInfo, Player, Rounding, Session, Settings, SplitMode } from '../lib/types';
 import NotFound from './NotFound';
 
-type OpenSheet = null | 'costs' | 'details' | 'share' | 'payment' | { person: string };
+type OpenSheet = null | 'edit' | 'share' | { person: string };
 
 export default function SessionPage() {
   const { id } = useParams<{ id: string }>();
@@ -73,7 +73,7 @@ export default function SessionPage() {
       </div>
 
       <section className="card overflow-hidden">
-        <button className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-surface-2" onClick={() => setSheet('details')}>
+        <button className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-surface-2" onClick={() => setSheet('edit')}>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <span className="truncate text-lg font-semibold">{session.court || 'Untitled court'}</span>
@@ -84,19 +84,19 @@ export default function SessionPage() {
           <span className="shrink-0 text-sm text-muted">Edit ›</span>
         </button>
 
-        <button className="w-full border-t border-line px-4 py-4 text-center hover:bg-surface-2" onClick={() => setSheet('costs')}>
+        <button className="w-full border-t border-line px-4 py-4 text-center hover:bg-surface-2" onClick={() => setSheet('edit')}>
           {bill.perGamePool > 0 ? (
             <>
               <div className="num text-3xl font-semibold tracking-tight text-gold">{formatMoney(bill.rate, c)}</div>
               <div className="stat-label mt-0.5">per game</div>
               <div className="num mt-1.5 text-xs text-muted">
-                {formatMoney(bill.perGamePool, c)} ÷ {pluralGames(bill.totalGames)} · tap to change costs
+                {formatMoney(bill.perGamePool, c)} ÷ {pluralGames(bill.totalGames)} · tap to edit
               </div>
             </>
           ) : (
             <>
-              <div className="text-sm font-medium">Set the lights cost</div>
-              <div className="mt-0.5 text-xs text-muted">Tap to enter what the court charged tonight</div>
+              <div className="text-sm font-medium">Add what the night cost</div>
+              <div className="mt-0.5 text-xs text-muted">Lights, shuttlecocks, court rental — tap to add them</div>
             </>
           )}
           {bill.equalPool > 0 && (
@@ -153,17 +153,15 @@ export default function SessionPage() {
         </>
       )}
 
-      <CostsSheet open={sheet === 'costs'} onClose={() => setSheet(null)} session={session} bill={bill} settings={settings} />
-      <DetailsSheet open={sheet === 'details'} onClose={() => setSheet(null)} session={session} sessions={sessions ?? []} />
-      <ShareSheet
-        open={sheet === 'share'}
+      <EditSheet
+        open={sheet === 'edit'}
         onClose={() => setSheet(null)}
         session={session}
+        sessions={sessions ?? []}
         bill={bill}
         settings={settings}
-        onEditPayment={() => setSheet('payment')}
       />
-      <PaymentSheet open={sheet === 'payment'} onClose={() => setSheet(null)} session={session} settings={settings} />
+      <ShareSheet open={sheet === 'share'} onClose={() => setSheet(null)} session={session} bill={bill} settings={settings} />
       <PersonSheet line={personSheet} bill={bill} currency={c} settings={settings} payment={payment} onClose={() => setSheet(null)} />
     </div>
   );
@@ -315,133 +313,35 @@ function AddPeople({ session, entries, players, previous }: { session: Session; 
 // ---------------------------------------------------------------------------
 // Sheets
 
-function CostsSheet({
+/** Common extras, offered as one-tap adds so payables are quick to enter. */
+const PAYABLE_PRESETS = ['Shuttlecocks', 'Balls', 'Court rental', 'Water', 'Snacks'];
+
+/** Everything about this night in one place: what it cost, who it is for, and the admin actions. */
+function EditSheet({
   open,
   onClose,
   session,
+  sessions,
   bill,
   settings,
 }: {
   open: boolean;
   onClose: () => void;
   session: Session;
+  sessions: Session[];
   bill: SessionBill;
   settings: Settings;
 }) {
-  const c = settings.currency;
-  const [advanced, setAdvanced] = useState(false);
-  const matches = matchesFromSlots(bill.totalGames, settings.playersPerGame);
-  const gameKind = settings.playersPerGame === 2 ? 'singles' : settings.playersPerGame === 4 ? 'doubles' : `${settings.playersPerGame}-player`;
-
-  return (
-    <Sheet open={open} onClose={onClose} title="Costs" subtitle="What the night cost and how it is divided">
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Lights">
-          <NumberField prefix={c} value={session.lightsCost} onCommit={(v) => updateSession(session.id, { lightsCost: v })} />
-        </Field>
-        <Field label={settings.visitorFeeLabel} hint="Charged to anyone marked as a visitor">
-          <NumberField prefix={c} value={session.visitorFee} onCommit={(v) => updateSession(session.id, { visitorFee: v })} />
-        </Field>
-      </div>
-
-      <div className="mt-4 rounded-xl bg-surface-2 p-3">
-        {bill.perGamePool > 0 ? (
-          <>
-            <div className="num text-base font-semibold">
-              {formatMoney(bill.perGamePool, c)} ÷ {pluralGames(bill.totalGames)} = <span className="text-gold">{formatMoney(bill.rate, c)}</span> per game
-            </div>
-            {bill.rate !== bill.rawRate && (
-              <div className="num mt-0.5 text-xs text-muted">Exact rate {c}{bill.rawRate.toFixed(4)}, rounded to {formatMoney(bill.rate, c)}.</div>
-            )}
-            {settings.playersPerGame > 1 && bill.totalGames > 0 && (
-              <div className={cx('mt-1 text-xs', matches === null ? 'text-warn' : 'text-muted')}>
-                {matches === null
-                  ? `${bill.totalGames} game slots is not a whole number of ${gameKind} matches. Worth re-checking the tally.`
-                  : `${bill.totalGames} game slots = ${matches} ${gameKind} ${matches === 1 ? 'match' : 'matches'}.`}
-              </div>
-            )}
-          </>
-        ) : (
-          <p className="text-sm text-muted">Enter the lights cost to see the rate per game.</p>
-        )}
-        {bill.equalPool > 0 && (
-          <div className="num mt-2 border-t border-line pt-2 text-base font-semibold">
-            {formatMoney(bill.equalPool, c)} ÷ {bill.headcount} = <span className="text-gold">{formatMoney(bill.equalShare, c)}</span> each
-          </div>
-        )}
-        {bill.variance !== 0 && (
-          <div className="num mt-2 text-xs text-warn">
-            Rounding collects {formatMoney(Math.abs(bill.variance), c)} {bill.variance > 0 ? 'more than' : 'less than'} the {formatMoney(bill.expected, c)} actually spent.
-          </div>
-        )}
-      </div>
-
-      <button className="btn btn-ghost btn-sm mt-4 -ml-2" onClick={() => setAdvanced((a) => !a)}>
-        {advanced ? 'Hide' : 'Show'} other costs and rounding
-      </button>
-
-      {advanced && (
-        <div className="mt-2 space-y-3">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Split lights">
-              <select className="input" value={session.lightsSplit} onChange={(e) => updateSession(session.id, { lightsSplit: e.target.value as SplitMode })}>
-                <option value="perGame">Per game played</option>
-                <option value="equal">Equally per person</option>
-              </select>
-            </Field>
-            <Field label="Rounding">
-              <select className="input" value={session.rounding} onChange={(e) => updateSession(session.id, { rounding: e.target.value as Rounding })}>
-                <option value="exact">Exact (centavos)</option>
-                <option value="peso">Nearest {c}1</option>
-                <option value="five">Round up to {c}5</option>
-              </select>
-            </Field>
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between">
-              <span className="label mb-0">Other shared costs</span>
-              <button className="btn btn-ghost btn-sm" onClick={() => addOtherCost(session.id, { label: 'Shuttlecocks', amount: 0, split: 'perGame' })}>
-                ＋ Add
-              </button>
-            </div>
-            {session.otherCosts.length === 0 ? (
-              <p className="mt-1 text-xs text-muted">Shuttlecocks, balls, court rental. Each can follow the games or split evenly.</p>
-            ) : (
-              <div className="mt-2 space-y-2">
-                {session.otherCosts.map((cost) => (
-                  <div key={cost.id} className="grid grid-cols-[1fr_auto] gap-2">
-                    <TextField value={cost.label} onCommit={(v) => updateOtherCost(session.id, cost.id, { label: v })} placeholder="What for" />
-                    <button className="btn btn-ghost" aria-label="Remove cost" onClick={() => removeOtherCost(session.id, cost.id)}>
-                      ✕
-                    </button>
-                    <NumberField prefix={c} value={cost.amount} onCommit={(v) => updateOtherCost(session.id, cost.id, { amount: v })} />
-                    <select
-                      className="input w-auto"
-                      value={cost.split}
-                      onChange={(e) => updateOtherCost(session.id, cost.id, { split: e.target.value as SplitMode })}
-                    >
-                      <option value="perGame">Per game</option>
-                      <option value="equal">Equally</option>
-                    </select>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </Sheet>
-  );
-}
-
-function DetailsSheet({ open, onClose, session, sessions }: { open: boolean; onClose: () => void; session: Session; sessions: Session[] }) {
   const navigate = useNavigate();
   const toast = useToast();
+  const c = settings.currency;
   const courts = [...new Set(sessions.map((s) => s.court).filter(Boolean))];
+  const matches = matchesFromSlots(bill.totalGames, settings.playersPerGame);
+  const gameKind = settings.playersPerGame === 2 ? 'singles' : settings.playersPerGame === 4 ? 'doubles' : `${settings.playersPerGame}-player`;
+  const usedLabels = new Set(session.otherCosts.map((x) => x.label.toLowerCase()));
 
   return (
-    <Sheet open={open} onClose={onClose} title="Session details">
+    <Sheet open={open} onClose={onClose} title="Edit session" subtitle="What the night cost, and everything else about it">
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Court">
           <TextField value={session.court} onCommit={(v) => updateSession(session.id, { court: v.trim() })} list="court-names" placeholder="Court name" />
@@ -456,7 +356,91 @@ function DetailsSheet({ open, onClose, session, sessions }: { open: boolean; onC
         </Field>
       </div>
 
-      <Field label="Note for the group" className="mt-3" hint="Added to the end of the shared message, e.g. your GCash number">
+      {/* Payables: lights is simply the first one */}
+      <h3 className="label mb-2 mt-5">What was paid for</h3>
+      <div className="space-y-2">
+        <PayableRow
+          label="Lights"
+          amount={session.lightsCost}
+          split={session.lightsSplit}
+          currency={c}
+          onAmount={(v) => updateSession(session.id, { lightsCost: v })}
+          onSplit={(v) => updateSession(session.id, { lightsSplit: v })}
+        />
+        {session.otherCosts.map((cost) => (
+          <PayableRow
+            key={cost.id}
+            label={cost.label}
+            editableLabel
+            amount={cost.amount}
+            split={cost.split}
+            currency={c}
+            onLabel={(v) => updateOtherCost(session.id, cost.id, { label: v })}
+            onAmount={(v) => updateOtherCost(session.id, cost.id, { amount: v })}
+            onSplit={(v) => updateOtherCost(session.id, cost.id, { split: v })}
+            onRemove={() => removeOtherCost(session.id, cost.id)}
+          />
+        ))}
+      </div>
+
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {PAYABLE_PRESETS.filter((label) => !usedLabels.has(label.toLowerCase())).map((label) => (
+          <button
+            key={label}
+            className="chip border border-line hover:bg-surface-2"
+            onClick={() => addOtherCost(session.id, { label, amount: 0, split: label === 'Water' || label === 'Snacks' ? 'equal' : 'perGame' })}
+          >
+            ＋ {label}
+          </button>
+        ))}
+        <button className="chip border border-line hover:bg-surface-2" onClick={() => addOtherCost(session.id, { label: '', amount: 0, split: 'perGame' })}>
+          ＋ Something else
+        </button>
+      </div>
+
+      {/* What that adds up to */}
+      <div className="mt-3 space-y-1.5 rounded-xl bg-surface-2 p-3">
+        {bill.perGamePool > 0 && (
+          <div>
+            <div className="num text-sm font-semibold">
+              {formatMoney(bill.perGamePool, c)} ÷ {pluralGames(bill.totalGames)} = <span className="text-gold">{formatMoney(bill.rate, c)}</span> per game
+            </div>
+            {settings.playersPerGame > 1 && bill.totalGames > 0 && (
+              <div className={cx('text-xs', matches === null ? 'text-warn' : 'text-muted')}>
+                {matches === null
+                  ? `${bill.totalGames} game slots is not a whole number of ${gameKind} matches. Worth re-checking the tally.`
+                  : `${bill.totalGames} game slots = ${matches} ${gameKind} ${matches === 1 ? 'match' : 'matches'}.`}
+              </div>
+            )}
+          </div>
+        )}
+        {bill.equalPool > 0 && (
+          <div className="num text-sm font-semibold">
+            {formatMoney(bill.equalPool, c)} ÷ {bill.headcount} = <span className="text-gold">{formatMoney(bill.equalShare, c)}</span> each
+          </div>
+        )}
+        {bill.perGamePool === 0 && bill.equalPool === 0 && <p className="text-sm text-muted">Add an amount above and the split appears here.</p>}
+        {bill.variance !== 0 && (
+          <div className="num text-xs text-warn">
+            Rounding collects {formatMoney(Math.abs(bill.variance), c)} {bill.variance > 0 ? 'more than' : 'less than'} the {formatMoney(bill.expected, c)} spent.
+          </div>
+        )}
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <Field label={settings.visitorFeeLabel} hint="Charged to anyone marked as a visitor">
+          <NumberField prefix={c} value={session.visitorFee} onCommit={(v) => updateSession(session.id, { visitorFee: v })} />
+        </Field>
+        <Field label="Rounding" hint="How the per-game rate is rounded">
+          <select className="input" value={session.rounding} onChange={(e) => updateSession(session.id, { rounding: e.target.value as Rounding })}>
+            <option value="exact">Exact (centavos)</option>
+            <option value="peso">Nearest {c}1</option>
+            <option value="five">Round up to {c}5</option>
+          </select>
+        </Field>
+      </div>
+
+      <Field label="Note for the group" className="mt-3" hint="Added to the end of the shared message">
         <TextAreaField value={session.notes ?? ''} onCommit={(v) => updateSession(session.id, { notes: v || undefined })} placeholder="e.g. GCash 09xx-xxx-xxxx" />
       </Field>
 
@@ -490,23 +474,68 @@ function DetailsSheet({ open, onClose, session, sessions }: { open: boolean; onC
   );
 }
 
+function PayableRow({
+  label,
+  editableLabel,
+  amount,
+  split,
+  currency,
+  onLabel,
+  onAmount,
+  onSplit,
+  onRemove,
+}: {
+  label: string;
+  editableLabel?: boolean;
+  amount: number;
+  split: SplitMode;
+  currency: string;
+  onLabel?: (v: string) => void;
+  onAmount: (v: number) => void;
+  onSplit: (v: SplitMode) => void;
+  onRemove?: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-line p-2.5">
+      <div className="flex items-center gap-2">
+        {editableLabel ? (
+          <TextField className="flex-1" value={label} onCommit={(v) => onLabel?.(v)} placeholder="What for" />
+        ) : (
+          <span className="flex-1 px-1 font-medium">{label}</span>
+        )}
+        {onRemove && (
+          <button className="btn btn-ghost btn-sm shrink-0" aria-label={`Remove ${label || 'payable'}`} onClick={onRemove}>
+            ✕
+          </button>
+        )}
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        <NumberField className="flex-1" prefix={currency} value={amount} onCommit={onAmount} />
+        <select className="input w-auto shrink-0" aria-label={`How ${label || 'this'} is split`} value={split} onChange={(e) => onSplit(e.target.value as SplitMode)}>
+          <option value="perGame">Per game</option>
+          <option value="equal">Split equally</option>
+        </select>
+      </div>
+    </div>
+  );
+}
+
 function ShareSheet({
   open,
   onClose,
   session,
   bill,
   settings,
-  onEditPayment,
 }: {
   open: boolean;
   onClose: () => void;
   session: Session;
   bill: SessionBill;
   settings: Settings;
-  onEditPayment: () => void;
 }) {
   const toast = useToast();
   const [showText, setShowText] = useState(false);
+  const [editPayment, setEditPayment] = useState(false);
   const message = buildChatMessage(session, bill, settings);
   const title = `${session.court} ${formatDateShort(session.date)}`;
   const payment = resolvePayment(session, settings);
@@ -537,7 +566,8 @@ function ShareSheet({
       <ShareCard sessionId={session.id} title={title} />
 
       <button
-        onClick={onEditPayment}
+        onClick={() => setEditPayment((v) => !v)}
+        aria-expanded={editPayment}
         className="mt-3 flex w-full items-center gap-3 rounded-xl border border-line p-3 text-left hover:bg-surface-2"
       >
         {payment?.qrImage ? (
@@ -553,54 +583,44 @@ function ShareSheet({
               : 'Not set. Add a QR or number so people can pay.'}
           </span>
         </span>
-        <span className="shrink-0 text-muted">›</span>
+        <span className="shrink-0 text-muted">{editPayment ? '⌄' : '›'}</span>
       </button>
+
+      {editPayment && (
+        <div className="mt-2 rounded-xl border border-line p-3">
+          {!ownPayment && (
+            <p className="mb-3 rounded-lg bg-surface-2 px-3 py-2 text-xs text-muted">
+              {isPaymentSet(settings.payment)
+                ? 'Using your default. Editing here applies to this session only.'
+                : 'Nothing set yet. What you enter applies to this session only.'}
+            </p>
+          )}
+          <PaymentEditor
+            idPrefix={`session-${session.id}`}
+            value={session.payment ?? settings.payment}
+            onPatch={(patch) => patchSessionPayment(session.id, patch, settings.payment)}
+          />
+          {ownPayment && (
+            <div className="mt-3 border-t border-line pt-3">
+              <ConfirmButton
+                className="btn-sm"
+                confirmLabel="Tap again to use the default"
+                onConfirm={async () => {
+                  await updateSession(session.id, { payment: undefined });
+                  toast.show('Back to your default payment details');
+                }}
+              >
+                Reset to my default
+              </ConfirmButton>
+            </div>
+          )}
+        </div>
+      )}
 
       <button className="btn btn-ghost btn-sm mt-3 -ml-2" onClick={() => setShowText((v) => !v)}>
         {showText ? 'Hide' : 'Preview'} the message
       </button>
       {showText && <pre className="num mt-2 whitespace-pre-wrap rounded-xl bg-surface-2 p-3 text-xs leading-relaxed">{message}</pre>}
-    </Sheet>
-  );
-}
-
-function PaymentSheet({ open, onClose, session, settings }: { open: boolean; onClose: () => void; session: Session; settings: Settings }) {
-  const toast = useToast();
-  const ownPayment = isPaymentSet(session.payment);
-
-  return (
-    <Sheet
-      open={open}
-      onClose={onClose}
-      title="Who collects tonight"
-      subtitle="Shown on the shared bill and beside each unpaid person's amount"
-    >
-      {!ownPayment && (
-        <p className="mb-3 rounded-xl bg-surface-2 px-3 py-2 text-xs text-muted">
-          {isPaymentSet(settings.payment)
-            ? 'This session uses your default payment details. Editing below applies to this session only.'
-            : 'Nothing set yet. What you enter here applies to this session only.'}
-        </p>
-      )}
-      <PaymentEditor
-        idPrefix={`session-${session.id}`}
-        value={session.payment ?? settings.payment}
-        onPatch={(patch) => patchSessionPayment(session.id, patch, settings.payment)}
-      />
-      {ownPayment && (
-        <div className="mt-4 border-t border-line pt-3">
-          <ConfirmButton
-            className="btn-sm"
-            confirmLabel="Tap again to use the default"
-            onConfirm={async () => {
-              await updateSession(session.id, { payment: undefined });
-              toast.show('Back to your default payment details');
-            }}
-          >
-            Reset to my default
-          </ConfirmButton>
-        </div>
-      )}
     </Sheet>
   );
 }
