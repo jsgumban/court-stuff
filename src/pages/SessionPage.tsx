@@ -19,6 +19,7 @@ import {
   deleteSession,
   duplicateSession,
   moveEntry,
+  patchSessionPayment,
   removeEntry,
   removeOtherCost,
   setAllPaid,
@@ -580,7 +581,7 @@ function PaymentSheet({ open, onClose, session, settings }: { open: boolean; onC
       <PaymentEditor
         idPrefix={`session-${session.id}`}
         value={session.payment ?? settings.payment}
-        onChange={(payment) => updateSession(session.id, { payment })}
+        onPatch={(patch) => patchSessionPayment(session.id, patch, settings.payment)}
       />
       {ownPayment && (
         <div className="mt-4 border-t border-line pt-3">

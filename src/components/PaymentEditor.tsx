@@ -8,11 +8,12 @@ import { useToast } from './Toast';
 /** Edits one set of payment details. Used for the Settings default and per session. */
 export function PaymentEditor({
   value,
-  onChange,
+  onPatch,
   idPrefix,
 }: {
   value: PaymentInfo | undefined;
-  onChange: (next: PaymentInfo) => void | Promise<void>;
+  /** Only the changed fields. The store merges them against the latest saved row. */
+  onPatch: (patch: Partial<PaymentInfo>) => void | Promise<void>;
   idPrefix: string;
 }) {
   const toast = useToast();
@@ -20,7 +21,7 @@ export function PaymentEditor({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pay = value ?? {};
-  const patch = (p: Partial<PaymentInfo>) => onChange({ ...pay, ...p });
+  const patch = (p: Partial<PaymentInfo>) => onPatch(p);
 
   const onFile = async (file: File | undefined) => {
     if (!file) return;

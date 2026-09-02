@@ -11,6 +11,7 @@ import {
   type Player,
   type Session,
   type Settings,
+  type PaymentInfo,
   type SharedCost,
   type Snapshot,
   type Tombstone,
@@ -127,6 +128,34 @@ export async function removeOtherCost(sessionId: string, costId: string): Promis
   const s = await db.sessions.get(sessionId);
   if (!s) return;
   await updateSession(sessionId, { otherCosts: s.otherCosts.filter((c) => c.id !== costId) });
+}
+
+// ---------- payment details ----------
+
+/** Drops keys the user cleared, so they do not linger as undefined in the synced row. */
+function cleanPayment(p: PaymentInfo): PaymentInfo | undefined {
+  const out: PaymentInfo = {};
+  for (const [k, v] of Object.entries(p)) {
+    if (v !== undefined && v !== null && v !== '') (out as Record<string, unknown>)[k] = v;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+/** Merges into the default payment details used by new sessions. */
+export async function patchSettingsPayment(patch: Partial<PaymentInfo>): Promise<void> {
+  const current = await getSettings();
+  await saveSettings({ payment: cleanPayment({ ...(current.payment ?? {}), ...patch }) });
+}
+
+/**
+ * Merges into one session's payment details, seeding from `fallback` (the settings
+ * default) the first time that session gets its own. Reads the stored row at write
+ * time so two quick edits cannot overwrite each other.
+ */
+export async function patchSessionPayment(sessionId: string, patch: Partial<PaymentInfo>, fallback?: PaymentInfo): Promise<void> {
+  const stored = await db.sessions.get(sessionId);
+  const base = cleanPayment(stored?.payment ?? {}) ?? fallback ?? {};
+  await updateSession(sessionId, { payment: cleanPayment({ ...base, ...patch }) });
 }
 
 // ---------- players ----------
