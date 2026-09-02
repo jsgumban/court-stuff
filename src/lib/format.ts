@@ -1,4 +1,5 @@
 import type { LineBill, SessionBill } from './billing';
+import { resolvePayment } from './payment';
 import type { Session, Settings } from './types';
 
 export function formatMoney(n: number, currency = '₱'): string {
@@ -124,7 +125,7 @@ export function buildChatMessage(session: Session, bill: SessionBill, settings: 
     out.push('');
   });
 
-  const pay = settings.payment;
+  const pay = resolvePayment(session, settings);
   if (pay && (pay.channel || pay.accountNumber)) {
     const who = pay.accountName ? ` (${pay.accountName})` : '';
     out.push(`Pay via ${[pay.channel, pay.accountNumber].filter(Boolean).join(' ')}${who}`.trim());

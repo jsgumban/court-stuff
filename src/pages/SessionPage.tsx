@@ -4,6 +4,7 @@ import { Breakdown } from '../components/Breakdown';
 import { ConfirmButton } from '../components/ConfirmButton';
 import { Loading } from '../components/EmptyState';
 import { Field, NumberField, TextAreaField, TextField } from '../components/Fields';
+import { PaymentEditor } from '../components/PaymentEditor';
 import { PaymentQR, hasPayment } from '../components/PaymentQR';
 import { ShareCard } from '../components/ShareCard';
 import { Sheet } from '../components/Sheet';
@@ -31,10 +32,11 @@ import { computeBill, matchesFromSlots, type LineBill, type SessionBill } from '
 import { canShare, copyText, shareText } from '../lib/browser';
 import { cx } from '../lib/cx';
 import { buildChatMessage, formatDateLong, formatDateShort, formatMoney, lineFormula, pluralGames } from '../lib/format';
-import type { Entry, Player, Rounding, Session, Settings, SplitMode } from '../lib/types';
+import { isPaymentSet, resolvePayment } from '../lib/payment';
+import type { Entry, PaymentInfo, Player, Rounding, Session, Settings, SplitMode } from '../lib/types';
 import NotFound from './NotFound';
 
-type OpenSheet = null | 'costs' | 'details' | 'share' | { person: string };
+type OpenSheet = null | 'costs' | 'details' | 'share' | 'payment' | { person: string };
 
 export default function SessionPage() {
   const { id } = useParams<{ id: string }>();
@@ -50,6 +52,7 @@ export default function SessionPage() {
 
   const bill = computeBill(session, entries);
   const c = settings.currency;
+  const payment = resolvePayment(session, settings);
   const previous = sessions?.find(
     (s) => s.id !== session.id && (s.date < session.date || (s.date === session.date && s.createdAt < session.createdAt)),
   );
@@ -150,8 +153,16 @@ export default function SessionPage() {
 
       <CostsSheet open={sheet === 'costs'} onClose={() => setSheet(null)} session={session} bill={bill} settings={settings} />
       <DetailsSheet open={sheet === 'details'} onClose={() => setSheet(null)} session={session} sessions={sessions ?? []} />
-      <ShareSheet open={sheet === 'share'} onClose={() => setSheet(null)} session={session} bill={bill} settings={settings} />
-      <PersonSheet line={personSheet} bill={bill} currency={c} settings={settings} onClose={() => setSheet(null)} />
+      <ShareSheet
+        open={sheet === 'share'}
+        onClose={() => setSheet(null)}
+        session={session}
+        bill={bill}
+        settings={settings}
+        onEditPayment={() => setSheet('payment')}
+      />
+      <PaymentSheet open={sheet === 'payment'} onClose={() => setSheet(null)} session={session} settings={settings} />
+      <PersonSheet line={personSheet} bill={bill} currency={c} settings={settings} payment={payment} onClose={() => setSheet(null)} />
     </div>
   );
 }
@@ -480,17 +491,21 @@ function ShareSheet({
   session,
   bill,
   settings,
+  onEditPayment,
 }: {
   open: boolean;
   onClose: () => void;
   session: Session;
   bill: SessionBill;
   settings: Settings;
+  onEditPayment: () => void;
 }) {
   const toast = useToast();
   const [showText, setShowText] = useState(false);
   const message = buildChatMessage(session, bill, settings);
   const title = `${session.court} ${formatDateShort(session.date)}`;
+  const payment = resolvePayment(session, settings);
+  const ownPayment = isPaymentSet(session.payment);
 
   return (
     <Sheet
@@ -515,10 +530,72 @@ function ShareSheet({
       }
     >
       <ShareCard sessionId={session.id} title={title} />
+
+      <button
+        onClick={onEditPayment}
+        className="mt-3 flex w-full items-center gap-3 rounded-xl border border-line p-3 text-left hover:bg-surface-2"
+      >
+        {payment?.qrImage ? (
+          <img src={payment.qrImage} alt="" className="h-12 w-12 shrink-0 rounded-lg border border-line bg-white object-contain p-0.5" />
+        ) : (
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-surface-2 text-lg">₱</span>
+        )}
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-medium">Who collects tonight</span>
+          <span className="block truncate text-xs text-muted">
+            {isPaymentSet(payment)
+              ? `${[payment!.channel, payment!.accountName, payment!.accountNumber].filter(Boolean).join(' · ')}${ownPayment ? '' : ' (your default)'}`
+              : 'Not set. Add a QR or number so people can pay.'}
+          </span>
+        </span>
+        <span className="shrink-0 text-muted">›</span>
+      </button>
+
       <button className="btn btn-ghost btn-sm mt-3 -ml-2" onClick={() => setShowText((v) => !v)}>
         {showText ? 'Hide' : 'Preview'} the message
       </button>
       {showText && <pre className="num mt-2 whitespace-pre-wrap rounded-xl bg-surface-2 p-3 text-xs leading-relaxed">{message}</pre>}
+    </Sheet>
+  );
+}
+
+function PaymentSheet({ open, onClose, session, settings }: { open: boolean; onClose: () => void; session: Session; settings: Settings }) {
+  const toast = useToast();
+  const ownPayment = isPaymentSet(session.payment);
+
+  return (
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title="Who collects tonight"
+      subtitle="Shown on the shared bill and beside each unpaid person's amount"
+    >
+      {!ownPayment && (
+        <p className="mb-3 rounded-xl bg-surface-2 px-3 py-2 text-xs text-muted">
+          {isPaymentSet(settings.payment)
+            ? 'This session uses your default payment details. Editing below applies to this session only.'
+            : 'Nothing set yet. What you enter here applies to this session only.'}
+        </p>
+      )}
+      <PaymentEditor
+        idPrefix={`session-${session.id}`}
+        value={session.payment ?? settings.payment}
+        onChange={(payment) => updateSession(session.id, { payment })}
+      />
+      {ownPayment && (
+        <div className="mt-4 border-t border-line pt-3">
+          <ConfirmButton
+            className="btn-sm"
+            confirmLabel="Tap again to use the default"
+            onConfirm={async () => {
+              await updateSession(session.id, { payment: undefined });
+              toast.show('Back to your default payment details');
+            }}
+          >
+            Reset to my default
+          </ConfirmButton>
+        </div>
+      )}
     </Sheet>
   );
 }
@@ -528,12 +605,14 @@ function PersonSheet({
   bill,
   currency,
   settings,
+  payment,
   onClose,
 }: {
   line?: LineBill;
   bill: SessionBill;
   currency: string;
   settings: Settings;
+  payment?: PaymentInfo;
   onClose: () => void;
 }) {
   if (!line) return null;
@@ -544,9 +623,7 @@ function PersonSheet({
   return (
     <Sheet open onClose={onClose} title={e.label} subtitle={e.paid ? 'Already paid' : 'Not yet paid'}>
       <Breakdown line={line} bill={bill} currency={currency} visitorFeeLabel={settings.visitorFeeLabel} />
-      {hasPayment(settings.payment) && !e.paid && (
-        <PaymentQR payment={settings.payment!} amount={line.total} currency={currency} className="mt-3" />
-      )}
+      {hasPayment(payment) && !e.paid && <PaymentQR payment={payment!} amount={line.total} currency={currency} className="mt-3" />}
 
       <div className="mt-4 grid gap-3 border-t border-line pt-4">
         <Field label="Name on the bill">

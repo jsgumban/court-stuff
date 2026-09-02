@@ -54,7 +54,7 @@ The session screen is built around how often things are actually done. The rate 
 - **Sanity check.** Warns when the tally is not a whole number of doubles matches (24 slots = 6 matches; 23 slots is a typo).
 - **Players.** Per-person history, running debts across sessions, settle-all, merge duplicate spellings, archive.
 - **Per-person breakdown.** Tap any name, in the app or on a shared link, for an itemised list: games x rate, shared costs, visitor fee, extras, then the total.
-- **Payment QR.** Upload your GCash or Maya QR once in Settings. It appears on the shared bill and inside each unpaid person's breakdown, next to the exact amount they owe, with a tap-to-copy account number.
+- **Payment QR, per session.** Each session carries its own payment details, so a different person can collect on a different night. New sessions start from the default in Settings, and any session can be overridden or reset back. The QR appears on the shared bill and inside each unpaid person's breakdown, next to the exact amount they owe, with a tap-to-copy account number.
 - **Share link.** One tap creates a public, view-only page for a session at `#/s/<token>`. Anyone with the link sees the bill and who has paid, without an account and with nothing to edit. "Stop sharing" kills the link immediately.
 - **Backup & restore.** Export/import a JSON file. The app also asks the browser for persistent storage.
 - Mobile-first, dark mode, installable (web manifest).

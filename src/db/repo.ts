@@ -50,6 +50,7 @@ export async function createSession(overrides: Partial<Session> = {}): Promise<s
     lightsSplit: s.defaultLightsSplit,
     visitorFee: s.defaultVisitorFee,
     rounding: s.defaultRounding,
+    payment: s.payment,
     otherCosts: [],
     status: 'open',
     createdAt: now,

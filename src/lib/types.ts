@@ -15,6 +15,17 @@ export interface Synced {
   dirty?: number;
 }
 
+/** Where people should send the money. Shown in the app and on a shared bill. */
+export interface PaymentInfo {
+  /** e.g. GCash, Maya, BPI */
+  channel?: string;
+  accountName?: string;
+  accountNumber?: string;
+  /** The QR image as a data URL, resized before it is stored. */
+  qrImage?: string;
+  note?: string;
+}
+
 export interface Player extends Synced {
   id: string;
   name: string;
@@ -43,6 +54,8 @@ export interface Session extends Synced {
   rounding: Rounding;
   otherCosts: SharedCost[];
   notes?: string;
+  /** Who collects for this night. Falls back to the default in Settings when unset. */
+  payment?: PaymentInfo;
   status: SessionStatus;
   createdAt: number;
 }
@@ -62,17 +75,6 @@ export interface Entry extends Synced {
   paid: boolean;
   paidAt?: number;
   order: number;
-}
-
-/** Where people should send the money. Shown in the app and on a shared bill. */
-export interface PaymentInfo {
-  /** e.g. GCash, Maya, BPI */
-  channel?: string;
-  accountName?: string;
-  accountNumber?: string;
-  /** The QR image as a data URL, resized before it is stored. */
-  qrImage?: string;
-  note?: string;
 }
 
 export interface Settings extends Partial<Synced> {
