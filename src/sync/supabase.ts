@@ -7,8 +7,19 @@ const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
 export const supabase: SupabaseClient | null =
   url && key
     ? createClient(url, key, {
-        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+        auth: {
+          // "Stay signed in": the session is kept in localStorage and refreshed in the background.
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true,
+          // PKCE returns ?code=… in the query string. The implicit flow uses the URL hash,
+          // which would collide with HashRouter's routes.
+          flowType: 'pkce',
+        },
       })
     : null;
 
 export const isSyncConfigured = supabase !== null;
+
+/** Google sign-in is only offered once the provider is configured in Supabase. */
+export const isGoogleEnabled = isSyncConfigured && import.meta.env.VITE_GOOGLE_AUTH === '1';

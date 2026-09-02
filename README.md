@@ -58,6 +58,8 @@ Open it on a phone on the same Wi-Fi with `npm run dev -- --host`. On the Sessio
 
 The app is local-first: every screen reads and writes the on-device database, so it works offline at the court. When Supabase credentials are present and you are signed in, a sync engine mirrors that database to your account:
 
+Signing in is required: the app shows a login screen until there is a session, and the route you asked for is preserved through login. Sessions persist across restarts and refresh silently. Password reset and (once configured) Google sign-in use the PKCE flow, which returns `?code=` in the query string rather than the URL hash, so it does not collide with hash routing.
+
 - Local edits are flagged and uploaded in the background (a few hundred ms after you stop typing). Deletions are uploaded as tombstones.
 - Remote changes are pulled on start, when the tab regains focus, when the network comes back, every two minutes, and instantly via Supabase Realtime when another device writes.
 - Conflicts resolve last-write-wins by timestamp; the database trigger refuses to overwrite a newer row with an older one.
@@ -68,6 +70,14 @@ The app is local-first: every screen reads and writes the on-device database, so
 Already provisioned: Supabase project `court-bills` (region ap-southeast-1), schema applied from `supabase/migrations/`, and `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` set in all three Vercel environments. Create your account from Settings → Cloud sync in the app.
 
 Email confirmation is off (`supabase/config.toml`), so sign-up works without waiting for mail. Since anyone could otherwise register, turn sign-ups off once your account exists: set `enable_signup = false` under `[auth]` and `[auth.email]`, then run `npx supabase config push`.
+
+### Google sign-in
+
+The button appears only when `VITE_GOOGLE_AUTH=1`, because the provider must exist first:
+
+1. In Google Cloud Console create an OAuth client (type: Web application) with the authorised redirect URI `https://rmprsarnsefnecbpxhlh.supabase.co/auth/v1/callback`.
+2. Put the client id and secret under `[auth.external.google]` in `supabase/config.toml` (read them from env vars, never commit the secret), then `npx supabase config push`.
+3. Set `VITE_GOOGLE_AUTH=1` in the Vercel environment and redeploy.
 
 ### Setting this up elsewhere
 

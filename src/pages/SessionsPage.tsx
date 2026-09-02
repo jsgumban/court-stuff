@@ -39,18 +39,11 @@ export default function SessionsPage() {
           body={
             syncState.status === 'syncing'
               ? 'Pulling your sessions from the cloud…'
-              : syncState.status === 'signed-out'
-                ? 'Sign in to pull your sessions from the cloud, start a new one, or load the Malindang 9/2/2026 example.'
-                : 'Start a session for tonight, or load the Malindang 9/2/2026 bill to see how the app splits lights per game.'
+              : 'Start a session for tonight, or load the Malindang 9/2/2026 bill to see how the app splits lights per game.'
           }
           actions={
             <>
-              {syncState.status === 'signed-out' && (
-                <Link to="/settings" className="btn btn-primary">
-                  Sign in to sync
-                </Link>
-              )}
-              <button className={syncState.status === 'signed-out' ? 'btn' : 'btn btn-primary'} onClick={onNew}>
+              <button className="btn btn-primary" onClick={onNew}>
                 New session
               </button>
               <button className="btn" onClick={onSample}>

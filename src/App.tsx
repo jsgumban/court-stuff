@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { Route, Routes } from 'react-router';
+import { AuthGate } from './components/AuthGate';
 import { Layout } from './components/Layout';
 import { ToastProvider } from './components/Toast';
 import { requestPersistentStorage } from './lib/browser';
@@ -19,16 +20,18 @@ export default function App() {
 
   return (
     <ToastProvider>
-      <Routes>
-        <Route element={<Layout />}>
-          <Route index element={<SessionsPage />} />
-          <Route path="session/:id" element={<SessionPage />} />
-          <Route path="players" element={<PlayersPage />} />
-          <Route path="players/:id" element={<PlayerPage />} />
-          <Route path="settings" element={<SettingsPage />} />
-          <Route path="*" element={<NotFound />} />
-        </Route>
-      </Routes>
+      <AuthGate>
+        <Routes>
+          <Route element={<Layout />}>
+            <Route index element={<SessionsPage />} />
+            <Route path="session/:id" element={<SessionPage />} />
+            <Route path="players" element={<PlayersPage />} />
+            <Route path="players/:id" element={<PlayerPage />} />
+            <Route path="settings" element={<SettingsPage />} />
+            <Route path="*" element={<NotFound />} />
+          </Route>
+        </Routes>
+      </AuthGate>
     </ToastProvider>
   );
 }

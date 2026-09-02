@@ -6,7 +6,7 @@ import type { Collection } from '../lib/types';
 import { decide, type LocalRow, type RemoteRow } from './merge';
 import { supabase } from './supabase';
 
-export type SyncStatus = 'disabled' | 'signed-out' | 'idle' | 'syncing' | 'offline' | 'error';
+export type SyncStatus = 'disabled' | 'loading' | 'signed-out' | 'idle' | 'syncing' | 'offline' | 'error';
 
 export interface SyncSnapshot {
   status: SyncStatus;
@@ -15,6 +15,8 @@ export interface SyncSnapshot {
   /** Local changes not yet uploaded. */
   pending: number;
   error: string | null;
+  /** True after a password-reset link is opened: the app must ask for a new password. */
+  recovery: boolean;
 }
 
 const TABLE = 'sync_rows';
@@ -93,11 +95,12 @@ async function applyRemote(rows: RemoteRow[]): Promise<void> {
 
 class SyncEngine {
   private snap: SyncSnapshot = {
-    status: supabase ? 'signed-out' : 'disabled',
+    status: supabase ? 'loading' : 'disabled',
     user: null,
     lastSyncAt: null,
     pending: 0,
     error: null,
+    recovery: false,
   };
   private listeners = new Set<() => void>();
   private started = false;
@@ -126,7 +129,12 @@ class SyncEngine {
     // Supabase warns against calling its API synchronously inside this callback.
     supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'TOKEN_REFRESHED') return;
+      if (event === 'PASSWORD_RECOVERY') this.set({ recovery: true });
       window.setTimeout(() => void this.onSession(session), 0);
+    });
+    // Fallback in case no auth event arrives (e.g. storage blocked): never hang on the splash.
+    void supabase.auth.getSession().then(({ data }) => {
+      if (this.snap.status === 'loading') void this.onSession(data.session);
     });
 
     window.addEventListener('online', () => this.requestSync());
@@ -148,7 +156,7 @@ class SyncEngine {
     const user = session?.user ?? null;
     if (!user) {
       this.teardownRealtime();
-      this.set({ status: 'signed-out', user: null, error: null });
+      this.set({ status: 'signed-out', user: null, error: null, recovery: false });
       return;
     }
     const same = this.snap.user?.id === user.id;
@@ -298,6 +306,30 @@ class SyncEngine {
   }
 
   // ---- auth ----
+
+  /** Sends a reset link; the app then shows the "set a new password" screen when it is opened. */
+  async sendPasswordReset(email: string): Promise<void> {
+    if (!supabase) throw new Error('Sync is not configured');
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+    if (error) throw new Error(error.message);
+  }
+
+  async updatePassword(password: string): Promise<void> {
+    if (!supabase) throw new Error('Sync is not configured');
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) throw new Error(error.message);
+    this.set({ recovery: false });
+  }
+
+  /** Sends the browser to Google and back; the session is picked up from the ?code= redirect. */
+  async signInWithGoogle(): Promise<void> {
+    if (!supabase) throw new Error('Sync is not configured');
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: window.location.origin, queryParams: { prompt: 'select_account' } },
+    });
+    if (error) throw new Error(error.message);
+  }
 
   async signIn(email: string, password: string): Promise<void> {
     if (!supabase) throw new Error('Sync is not configured');
