@@ -1,17 +1,29 @@
-import { useEffect, useState, type InputHTMLAttributes, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type InputHTMLAttributes, type ReactNode } from 'react';
 import { cx } from '../lib/cx';
 
 type Base = Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'prefix'>;
 
 /** Text input that keeps a local draft while focused and commits on blur / Enter. */
-export function TextField({ value, onCommit, className, ...rest }: Base & { value: string; onCommit: (v: string) => void }) {
+export function TextField({
+  value,
+  onCommit,
+  className,
+  focusOnMount,
+  ...rest
+}: Base & { value: string; onCommit: (v: string) => void; focusOnMount?: boolean }) {
   const [draft, setDraft] = useState(value);
   const [focused, setFocused] = useState(false);
+  const ref = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (!focused) setDraft(value);
   }, [value, focused]);
+  // autoFocus is unreliable inside a dialog that just took focus itself.
+  useEffect(() => {
+    if (focusOnMount) ref.current?.focus();
+  }, [focusOnMount]);
   return (
     <input
+      ref={ref}
       {...rest}
       className={cx('input', className)}
       value={draft}

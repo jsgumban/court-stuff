@@ -1,4 +1,4 @@
-import { payablesOf, round2, type SessionBill } from '../lib/billing';
+import { matchesFromSlots, payablesOf, round2, type SessionBill } from '../lib/billing';
 import { cx } from '../lib/cx';
 import { formatMoney, formatNumber, pluralGames } from '../lib/format';
 import type { Session } from '../lib/types';
@@ -75,12 +75,15 @@ export function CostSummary({
   bill,
   currency,
   visitorFeeLabel,
+  playersPerGame,
   className,
 }: {
   session: Partial<Session>;
   bill: SessionBill;
   currency: string;
   visitorFeeLabel?: string;
+  /** When given, warns if the game tally is not a whole number of matches. */
+  playersPerGame?: number;
   className?: string;
 }) {
   const rows = costRows(session, bill, currency, visitorFeeLabel);
@@ -123,6 +126,14 @@ export function CostSummary({
           Across {bill.headcount} {bill.headcount === 1 ? 'person' : 'people'} and {formatNumber(bill.totalGames)} games.
         </p>
       )}
+      {playersPerGame !== undefined &&
+        playersPerGame > 1 &&
+        bill.totalGames > 0 &&
+        matchesFromSlots(bill.totalGames, playersPerGame) === null && (
+          <p className="num mt-1 text-xs text-warn">
+            {formatNumber(bill.totalGames)} games is not a whole number of {playersPerGame}-player matches. Worth re-checking the tally.
+          </p>
+        )}
     </div>
   );
 }

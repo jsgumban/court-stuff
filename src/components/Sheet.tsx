@@ -22,10 +22,14 @@ export function Sheet({
 }) {
   const panel = useRef<HTMLDivElement>(null);
   const titleId = useId();
+  // Held in a ref so a new inline onClose on each render does not re-run the
+  // effect below, which would steal focus back from whatever you are typing in.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && closeRef.current();
     document.addEventListener('keydown', onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -34,7 +38,7 @@ export function Sheet({
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = prev;
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 

@@ -134,7 +134,7 @@ export default function SharedSessionPage() {
           Who owes what ({bill.headcount})
         </h2>
         <p className="mb-2 px-1 text-xs text-muted">Tap your name to see how your share was worked out.</p>
-        <ul className="space-y-2">
+        <ul aria-label="People on this bill" className="space-y-2">
           {bill.lines.map((line, i) => (
             <li key={line.entry.id}>
               <button
