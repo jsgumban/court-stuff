@@ -51,6 +51,7 @@ Open it on a phone on the same Wi-Fi with `npm run dev -- --host`. On the Sessio
 - **Rounding.** Exact centavos, nearest ₱1, or round up to ₱5, with the over/short amount shown so the collector is never surprised.
 - **Sanity check.** Warns when the tally is not a whole number of doubles matches (24 slots = 6 matches; 23 slots is a typo).
 - **Players.** Per-person history, running debts across sessions, settle-all, merge duplicate spellings, archive.
+- **Share link.** One tap creates a public, view-only page for a session at `#/s/<token>`. Anyone with the link sees the bill and who has paid, without an account and with nothing to edit. "Stop sharing" kills the link immediately.
 - **Backup & restore.** Export/import a JSON file. The app also asks the browser for persistent storage.
 - Mobile-first, dark mode, installable (web manifest).
 
@@ -91,7 +92,9 @@ Locally: IndexedDB (via [Dexie](https://dexie.org)) in the browser profile of ea
 
 With sync: a single `sync_rows` table in your Supabase project holds each collection's rows as JSON, protected by Row Level Security so only your account can read them.
 
-All local writes go through `src/db/repo.ts`; all cloud traffic goes through `src/sync/engine.ts`.
+All local writes go through `src/db/repo.ts`; all cloud traffic goes through `src/sync/engine.ts` and `src/sync/share.ts`.
+
+Share links do not weaken the owner's privacy: `session_shares` maps a random 22-character token to one session, and anonymous visitors never read `sync_rows`. They call `get_shared_session(token)`, a `security definer` function that returns just that session, its bill lines, and the currency/label used for display.
 
 ## Layout
 

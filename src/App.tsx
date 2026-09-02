@@ -10,6 +10,7 @@ import PlayerPage from './pages/PlayerPage';
 import PlayersPage from './pages/PlayersPage';
 import SessionPage from './pages/SessionPage';
 import SessionsPage from './pages/SessionsPage';
+import SharedSessionPage from './pages/SharedSessionPage';
 import SettingsPage from './pages/SettingsPage';
 
 export default function App() {
@@ -20,18 +21,24 @@ export default function App() {
 
   return (
     <ToastProvider>
-      <AuthGate>
-        <Routes>
-          <Route element={<Layout />}>
-            <Route index element={<SessionsPage />} />
-            <Route path="session/:id" element={<SessionPage />} />
-            <Route path="players" element={<PlayersPage />} />
-            <Route path="players/:id" element={<PlayerPage />} />
-            <Route path="settings" element={<SettingsPage />} />
-            <Route path="*" element={<NotFound />} />
-          </Route>
-        </Routes>
-      </AuthGate>
+      <Routes>
+        {/* Public, read-only: no account needed. */}
+        <Route path="s/:token" element={<SharedSessionPage />} />
+        <Route
+          element={
+            <AuthGate>
+              <Layout />
+            </AuthGate>
+          }
+        >
+          <Route index element={<SessionsPage />} />
+          <Route path="session/:id" element={<SessionPage />} />
+          <Route path="players" element={<PlayersPage />} />
+          <Route path="players/:id" element={<PlayerPage />} />
+          <Route path="settings" element={<SettingsPage />} />
+          <Route path="*" element={<NotFound />} />
+        </Route>
+      </Routes>
     </ToastProvider>
   );
 }

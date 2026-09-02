@@ -4,6 +4,7 @@ import { ConfirmButton } from '../components/ConfirmButton';
 import { Loading } from '../components/EmptyState';
 import { Field, NumberField, TextAreaField, TextField } from '../components/Fields';
 import { Money } from '../components/Money';
+import { ShareCard } from '../components/ShareCard';
 import { Stepper } from '../components/Stepper';
 import { Switch } from '../components/Switch';
 import { useToast } from '../components/Toast';
@@ -148,6 +149,8 @@ export default function SessionPage() {
           </ul>
         )}
       </section>
+
+      <ShareCard sessionId={session.id} title={`${session.court} ${formatDateShort(session.date)}`} />
 
       {/* Announcement */}
       <section className="card p-4">
