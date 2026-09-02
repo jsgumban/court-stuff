@@ -3,7 +3,7 @@ import { EmptyState, Loading } from '../components/EmptyState';
 import { Money } from '../components/Money';
 import { Stat } from '../components/Stat';
 import { useToast } from '../components/Toast';
-import { createSession, seedSample } from '../db/repo';
+import { seedSample } from '../db/repo';
 import { useSessionSummaries, useSettings } from '../hooks/useData';
 import { formatMoney, formatMonth, pluralGames, todayISO } from '../lib/format';
 import type { SessionSummary } from '../lib/stats';
@@ -19,10 +19,7 @@ export default function SessionsPage() {
   if (!summaries || !settings) return <Loading />;
   const c = settings.currency;
 
-  const onNew = async () => {
-    const id = await createSession();
-    navigate(`/session/${id}`);
-  };
+  const onNew = () => navigate('/new');
   const onSample = async () => {
     const id = await seedSample();
     toast.show('Malindang sample loaded');

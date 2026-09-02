@@ -9,6 +9,7 @@ import NotFound from './pages/NotFound';
 import PlayerPage from './pages/PlayerPage';
 import PlayersPage from './pages/PlayersPage';
 import SessionPage from './pages/SessionPage';
+import NewSessionPage from './pages/NewSessionPage';
 import SessionsPage from './pages/SessionsPage';
 import SharedSessionPage from './pages/SharedSessionPage';
 import SettingsPage from './pages/SettingsPage';
@@ -32,6 +33,7 @@ export default function App() {
           }
         >
           <Route index element={<SessionsPage />} />
+          <Route path="new" element={<NewSessionPage />} />
           <Route path="session/:id" element={<SessionPage />} />
           <Route path="players" element={<PlayersPage />} />
           <Route path="players/:id" element={<PlayerPage />} />

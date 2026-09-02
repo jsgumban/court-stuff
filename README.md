@@ -48,6 +48,7 @@ The session screen is built around how often things are actually done. The rate 
 - **Lights per game.** Rate = lights ÷ total games across everyone. Each person pays games × rate. Visitors get the visitor fee added. Extras (water, shuttles, a discount) can be added per line.
 - **Paid tracking.** Tap *Mark paid* per person; the summary shows collected vs. unpaid, and the announcement puts ✅ next to paid names.
 - **Copy / Share announcement.** One tap copies the message in the group-chat format above (or opens the phone's share sheet).
+- **Two-step setup.** New session asks the court, date and lights cost, then who played. Paste a whole list of names at once, reuse last session's crowd or all regulars with one tap, and the session opens fully populated. Setting up a sixteen-person night takes about four taps.
 - **Quick roster.** Names are remembered. Chips add regulars in one tap; *All regulars* and *Same people as last session* fill a new night instantly. *Duplicate for today* clones a session's people and costs.
 - **Other shared costs.** Shuttlecocks, balls, court rental… each split per game (like lights) or equally per head.
 - **Rounding.** Exact centavos, nearest ₱1, or round up to ₱5, with the over/short amount shown so the collector is never surprised.

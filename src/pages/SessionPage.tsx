@@ -19,6 +19,7 @@ import {
   deleteSession,
   duplicateSession,
   moveEntry,
+  parseNames,
   patchSessionPayment,
   removeEntry,
   removeOtherCost,
@@ -238,10 +239,13 @@ function AddPeople({ session, entries, players, previous }: { session: Session; 
     if (match) setVisitor(!match.isRegular);
   };
 
+  const names = parseNames(name);
+
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
-    await addEntry(session.id, { name, isVisitor: visitor });
+    if (!names.length) return;
+    for (const n of names) await addEntry(session.id, { name: n, isVisitor: visitor });
+    if (names.length > 1) toast.show(`Added ${names.length} people`);
     setName('');
     setVisitor(false);
     inputRef.current?.focus();
@@ -254,7 +258,7 @@ function AddPeople({ session, entries, players, previous }: { session: Session; 
           ref={inputRef}
           list="roster-names"
           className="input min-w-0 flex-1"
-          placeholder="Add a name…"
+          placeholder="Add a name, or paste a list…"
           value={name}
           onChange={(e) => onName(e.target.value)}
           autoComplete="off"
@@ -265,8 +269,8 @@ function AddPeople({ session, entries, players, previous }: { session: Session; 
             <option key={p.id} value={p.name} />
           ))}
         </datalist>
-        <button className="btn btn-primary shrink-0" type="submit" disabled={!name.trim()}>
-          Add
+        <button className="btn btn-primary shrink-0" type="submit" disabled={!names.length}>
+          {names.length > 1 ? `Add ${names.length}` : 'Add'}
         </button>
       </div>
       <div className="mt-1.5">

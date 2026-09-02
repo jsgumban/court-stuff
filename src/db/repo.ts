@@ -277,6 +277,39 @@ export async function addEntry(sessionId: string, input: AddEntryInput): Promise
   });
 }
 
+/** Splits a pasted list of names on commas, semicolons or new lines. */
+export function parseNames(text: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of text.split(/[\n,;]+/)) {
+    const name = raw.trim().replace(/^\d+[.)]\s*/, '').replace(/\s+/g, ' ');
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(name);
+  }
+  return out;
+}
+
+export interface NewSessionPerson {
+  name: string;
+  playerId?: string;
+  isVisitor?: boolean;
+}
+
+/** Creates a session and everyone on it in one go, so setting up a night is a single step. */
+export async function createSessionWithPeople(
+  overrides: Partial<Session>,
+  people: NewSessionPerson[],
+): Promise<string> {
+  const sessionId = await createSession(overrides);
+  for (const p of people) {
+    await addEntry(sessionId, { name: p.name, playerId: p.playerId, isVisitor: p.isVisitor ?? false });
+  }
+  return sessionId;
+}
+
 export async function updateEntry(id: string, patch: Partial<Omit<Entry, 'id' | 'sessionId'>>): Promise<void> {
   await db.entries.update(id, { ...patch, ...stamp() });
 }
