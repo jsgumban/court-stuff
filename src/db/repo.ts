@@ -141,21 +141,30 @@ function cleanPayment(p: PaymentInfo): PaymentInfo | undefined {
   return Object.keys(out).length ? out : undefined;
 }
 
-/** Merges into the default payment details used by new sessions. */
+/**
+ * Merges into the default payment details used by new sessions.
+ * The read and the write share one transaction, so two quick edits cannot
+ * both read the old row and then overwrite each other.
+ */
 export async function patchSettingsPayment(patch: Partial<PaymentInfo>): Promise<void> {
-  const current = await getSettings();
-  await saveSettings({ payment: cleanPayment({ ...(current.payment ?? {}), ...patch }) });
+  await db.transaction('rw', db.settings, async () => {
+    const stored = await db.settings.get('app');
+    const current = { ...DEFAULT_SETTINGS, ...(stored ?? {}), key: 'app' as const };
+    await db.settings.put({ ...current, payment: cleanPayment({ ...(current.payment ?? {}), ...patch }), ...stamp() });
+  });
 }
 
 /**
  * Merges into one session's payment details, seeding from `fallback` (the settings
- * default) the first time that session gets its own. Reads the stored row at write
- * time so two quick edits cannot overwrite each other.
+ * default) the first time that session gets its own. Atomic for the same reason.
  */
 export async function patchSessionPayment(sessionId: string, patch: Partial<PaymentInfo>, fallback?: PaymentInfo): Promise<void> {
-  const stored = await db.sessions.get(sessionId);
-  const base = cleanPayment(stored?.payment ?? {}) ?? fallback ?? {};
-  await updateSession(sessionId, { payment: cleanPayment({ ...base, ...patch }) });
+  await db.transaction('rw', db.sessions, async () => {
+    const stored = await db.sessions.get(sessionId);
+    if (!stored) return;
+    const base = cleanPayment(stored.payment ?? {}) ?? fallback ?? {};
+    await db.sessions.update(sessionId, { payment: cleanPayment({ ...base, ...patch }), ...stamp() });
+  });
 }
 
 // ---------- players ----------
