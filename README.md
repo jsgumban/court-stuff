@@ -22,6 +22,13 @@ Lights = ₱600
 ...
 ```
 
+## Live
+
+- App: https://court-bills.vercel.app
+- Code: https://github.com/jsgumban/court-bills (private)
+
+Every push to `main` redeploys automatically on Vercel. Data still lives only in each visitor's own browser; the site itself is static.
+
 ## Run it
 
 ```bash
