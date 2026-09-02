@@ -63,11 +63,17 @@ The app is local-first: every screen reads and writes the on-device database, so
 - Conflicts resolve last-write-wins by timestamp; the database trigger refuses to overwrite a newer row with an older one.
 - Signing in on a device that already has data uploads that data. Signing in as a different account wipes the device first.
 
-### One-time setup
+### This deployment
+
+Already provisioned: Supabase project `court-bills` (region ap-southeast-1), schema applied from `supabase/migrations/`, and `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` set in all three Vercel environments. Create your account from Settings → Cloud sync in the app.
+
+Email confirmation is off (`supabase/config.toml`), so sign-up works without waiting for mail. Since anyone could otherwise register, turn sign-ups off once your account exists: set `enable_signup = false` under `[auth]` and `[auth.email]`, then run `npx supabase config push`.
+
+### Setting this up elsewhere
 
 1. Create a Supabase project, open the SQL editor, and run `supabase/schema.sql` (idempotent).
-2. In Authentication → Providers keep Email enabled. For a single user, create the account under Authentication → Users ("Add user", auto-confirm), then disable public sign-ups under Authentication → Settings.
-3. Copy the project URL and publishable (anon) key from Project Settings → API into `.env.local` (see `.env.example`) and into the Vercel project's environment variables, then redeploy.
+2. Keep the Email provider enabled. Either allow one sign-up and then disable it, or create the user under Authentication → Users.
+3. Copy the project URL and publishable (anon) key from Project Settings → API into `.env.local` (see `.env.example`) and into your host's environment variables, then redeploy.
 
 ## Where the data lives
 
