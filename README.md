@@ -64,7 +64,9 @@ Signing in is required: the app shows a login screen until there is a session, a
 - Local edits are flagged and uploaded in the background (a few hundred ms after you stop typing). Deletions are uploaded as tombstones.
 - Remote changes are pulled on start, when the tab regains focus, when the network comes back, every two minutes, and instantly via Supabase Realtime when another device writes.
 - Conflicts resolve last-write-wins by timestamp; the database trigger refuses to overwrite a newer row with an older one.
-- Signing in on a device that already has data uploads that data. Signing in as a different account wipes the device first.
+- Signing in on a device that already has data uploads that data.
+- If the signed-in account is deleted on the server, the app detects it, explains it on the login screen, and adopts the device's bills into the recreated account instead of losing them.
+- Signing in as a genuinely different account clears the device, but only after storing a restorable snapshot that Settings offers to bring back.
 
 ### This deployment
 

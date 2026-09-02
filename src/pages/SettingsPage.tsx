@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { ConfirmButton } from '../components/ConfirmButton';
 import { Loading } from '../components/EmptyState';
 import { Field, NumberField, TextField } from '../components/Fields';
+import { SnapshotCard } from '../components/SnapshotCard';
 import { SyncCard } from '../components/SyncCard';
 import { useToast } from '../components/Toast';
 import { clearAll, exportBackup, importBackup, parseBackup, saveSettings, seedSample } from '../db/repo';
@@ -55,6 +56,7 @@ export default function SettingsPage() {
     <div className="space-y-4">
       <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
 
+      <SnapshotCard />
       <SyncCard />
 
       <section className="card p-4">

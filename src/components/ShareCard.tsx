@@ -6,6 +6,16 @@ import { isSyncConfigured } from '../sync/supabase';
 import { ConfirmButton } from './ConfirmButton';
 import { useToast } from './Toast';
 
+function explain(e: unknown): string {
+  const raw = e instanceof Error ? e.message : String(e);
+  if (raw.includes('session_shares_user_id_fkey') || raw.includes('violates foreign key')) {
+    return 'Your account no longer exists on the server. Sign out and create it again; the bills on this device are safe.';
+  }
+  if (raw.toLowerCase().includes('jwt') || raw.includes('401')) return 'Your sign-in expired. Sign out and back in, then try again.';
+  if (raw.toLowerCase().includes('failed to fetch')) return 'Cannot reach the server. Check your connection and try again.';
+  return raw;
+}
+
 /** Creates and manages the public, view-only link for one session. */
 export function ShareCard({ sessionId, title }: { sessionId: string; title: string }) {
   const toast = useToast();
@@ -39,7 +49,7 @@ export function ShareCard({ sessionId, title }: { sessionId: string; title: stri
       const ok = await copyText(shareUrl(t));
       toast.show(ok ? 'Link created and copied' : 'Link created');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not create the link');
+      setError(explain(e));
     } finally {
       setBusy(false);
     }
@@ -52,7 +62,7 @@ export function ShareCard({ sessionId, title }: { sessionId: string; title: stri
       setToken(null);
       toast.show('Link turned off. It no longer opens.');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not stop sharing');
+      setError(explain(e));
     } finally {
       setBusy(false);
     }

@@ -12,6 +12,7 @@ import {
   type Session,
   type Settings,
   type SharedCost,
+  type Snapshot,
   type Tombstone,
 } from '../lib/types';
 
@@ -427,4 +428,31 @@ export async function seedSample(): Promise<string> {
     if (line.paid) await setEntryPaid(entryId, true);
   }
   return id;
+}
+
+// ---------- safety snapshots ----------
+
+const SNAPSHOT_KEY = 'previous-account';
+
+/** Stores a full copy of this device's data so a wipe can be undone. */
+export async function takeSnapshot(reason: string): Promise<void> {
+  const backup = await exportBackup();
+  if (backup.sessions.length === 0 && backup.players.length === 0) return; // nothing worth keeping
+  await db.snapshots.put({ key: SNAPSHOT_KEY, createdAt: Date.now(), reason, backup });
+}
+
+export async function getSnapshot(): Promise<Snapshot | undefined> {
+  return db.snapshots.get(SNAPSHOT_KEY);
+}
+
+/** Merges the snapshot back in and marks it for upload to the current account. */
+export async function restoreSnapshot(): Promise<void> {
+  const snap = await db.snapshots.get(SNAPSHOT_KEY);
+  if (!snap) return;
+  await importBackup(snap.backup, 'merge');
+  await db.snapshots.delete(SNAPSHOT_KEY);
+}
+
+export async function discardSnapshot(): Promise<void> {
+  await db.snapshots.delete(SNAPSHOT_KEY);
 }

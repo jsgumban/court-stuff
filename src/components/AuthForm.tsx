@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { cx } from '../lib/cx';
-import { sync } from '../sync/engine';
+import { sync, useSync } from '../sync/engine';
 import { isGoogleEnabled } from '../sync/supabase';
 
 export type AuthMode = 'signin' | 'signup' | 'forgot';
@@ -19,6 +19,7 @@ const friendly = (message: string): string => {
 
 /** Email/password + Google form. Shared by the full-screen login and the Settings card. */
 export function AuthForm({ onSignedIn, compact }: { onSignedIn?: () => void; compact?: boolean }) {
+  const engine = useSync();
   const [mode, setMode] = useState<AuthMode>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -95,6 +96,9 @@ export function AuthForm({ onSignedIn, compact }: { onSignedIn?: () => void; com
         </label>
       )}
 
+      {!error && engine.status === 'signed-out' && engine.error && (
+        <p className="rounded-xl bg-warn-soft px-3 py-2 text-sm text-warn">{engine.error}</p>
+      )}
       {error && <p className="text-sm text-bad">{error}</p>}
       {notice && <p className="text-sm text-ok">{notice}</p>}
 

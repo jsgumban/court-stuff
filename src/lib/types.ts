@@ -99,9 +99,23 @@ export interface Tombstone {
 export interface SyncStateRow {
   key: 'state';
   userId?: string;
+  /**
+   * Set when the signed-in account was found to no longer exist on the server.
+   * The next sign-in is then treated as the same person recreating their account,
+   * so local bills are uploaded instead of wiped.
+   */
+  previousUserDeleted?: boolean;
   /** synced_at of the last remote row applied (ISO timestamp). */
   cursor?: string;
   lastSyncAt?: number;
+}
+
+/** A full copy of this device's data, kept before anything destructive. */
+export interface Snapshot {
+  key: string;
+  createdAt: number;
+  reason: string;
+  backup: BackupFile;
 }
 
 /** Shape of an exported backup file. */

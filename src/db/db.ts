@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import type { Entry, Player, Session, Settings, SyncStateRow, Tombstone } from '../lib/types';
+import type { Entry, Player, Session, Settings, Snapshot, SyncStateRow, Tombstone } from '../lib/types';
 
 /**
  * Local database (IndexedDB via Dexie). The UI always reads and writes here, so the app
@@ -13,6 +13,7 @@ export class CourtBillsDB extends Dexie {
   settings!: Table<Settings, string>;
   tombstones!: Table<Tombstone, [string, string]>;
   syncState!: Table<SyncStateRow, string>;
+  snapshots!: Table<Snapshot, string>;
 
   constructor() {
     super('court-bills');
@@ -52,6 +53,8 @@ export class CourtBillsDB extends Dexie {
           s.dirty = 1;
         });
       });
+    // A safety copy is taken before anything wipes the device, so nothing is lost silently.
+    this.version(3).stores({ snapshots: 'key, createdAt' });
   }
 }
 

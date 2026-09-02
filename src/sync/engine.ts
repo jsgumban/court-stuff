@@ -2,6 +2,7 @@ import type { RealtimeChannel, Session as AuthSession } from '@supabase/supabase
 import { liveQuery, type Table } from 'dexie';
 import { useSyncExternalStore } from 'react';
 import { db } from '../db/db';
+import { takeSnapshot } from '../db/repo';
 import type { Collection } from '../lib/types';
 import { decide, type LocalRow, type RemoteRow } from './merge';
 import { supabase } from './supabase';
@@ -60,6 +61,21 @@ async function markAllDirty(): Promise<void> {
   });
 }
 
+/**
+ * True when the server says the signed-in user no longer exists (deleted account),
+ * as opposed to a network problem — which must never trigger a sign-out.
+ */
+function isMissingUser(error: { status?: number; message?: string; code?: string } | null): boolean {
+  if (!error) return false;
+  const msg = (error.message ?? '').toLowerCase();
+  return (
+    error.code === 'user_not_found' ||
+    msg.includes('user_not_found') ||
+    msg.includes('does not exist') ||
+    msg.includes('user from sub claim')
+  );
+}
+
 /** Wipe this device completely (data + sync bookkeeping). */
 export async function resetLocal(): Promise<void> {
   await db.transaction('rw', [db.players, db.sessions, db.entries, db.settings, db.tombstones, db.syncState], async () => {
@@ -103,6 +119,8 @@ class SyncEngine {
     recovery: false,
   };
   private listeners = new Set<() => void>();
+  /** Message that must survive the sign-out event, e.g. "that account no longer exists". */
+  private notice: string | null = null;
   private started = false;
   private channel: RealtimeChannel | null = null;
   private running: Promise<void> | null = null;
@@ -156,20 +174,45 @@ class SyncEngine {
     const user = session?.user ?? null;
     if (!user) {
       this.teardownRealtime();
-      this.set({ status: 'signed-out', user: null, error: null, recovery: false });
+      this.set({ status: 'signed-out', user: null, error: this.notice, recovery: false });
       return;
     }
     const same = this.snap.user?.id === user.id;
-    this.set({ user: { id: user.id, email: user.email ?? null } });
+    if (!same && navigator.onLine) {
+      // A stored session can outlive the account it belongs to. Check with the server
+      // before trusting it, otherwise every write fails with a confusing database error.
+      const { error } = await supabase!.auth.getUser();
+      if (isMissingUser(error)) {
+        const state = (await db.syncState.get('state')) ?? { key: 'state' as const };
+        await db.syncState.put({ ...state, previousUserDeleted: true });
+        this.teardownRealtime();
+        // Kept in `notice` because signOut() fires its own event that would clear `error`.
+        this.notice =
+          'That account no longer exists. Create it again with the same email — the bills on this device are safe and will upload to the new account.';
+        await supabase!.auth.signOut().catch(() => {});
+        this.set({ status: 'signed-out', user: null, recovery: false, error: this.notice });
+        return;
+      }
+    }
+
+    this.notice = null;
+    this.set({ user: { id: user.id, email: user.email ?? null }, error: null });
     if (!same) {
       const state = await db.syncState.get('state');
       if (state?.userId && state.userId !== user.id) {
-        await resetLocal(); // another account was used on this device
+        if (state.previousUserDeleted) {
+          // Same person, account recreated: adopt what is already on this device.
+          await markAllDirty();
+        } else {
+          // A different account on this device. Keep a restorable copy before clearing.
+          await takeSnapshot('A different account signed in on this device');
+          await resetLocal();
+        }
       } else if (!state?.userId) {
         await markAllDirty(); // first sign-in here: upload whatever this device already has
       }
       const fresh = (await db.syncState.get('state')) ?? { key: 'state' as const };
-      await db.syncState.put({ ...fresh, userId: user.id });
+      await db.syncState.put({ ...fresh, userId: user.id, previousUserDeleted: false });
       this.setupRealtime(user.id);
     }
     this.requestSync();
