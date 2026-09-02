@@ -1,0 +1,13 @@
+# Auth settings for the linked project (supabase config push).
+project_id = "court-bills"
+
+[auth]
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+# Single-user app with password sign-in: skip the confirmation email so sign-up works immediately.
+enable_confirmations = false
+secure_password_change = false
+max_frequency = "1m0s"
+otp_length = 8
