@@ -2,6 +2,7 @@ import Dexie from 'dexie';
 import { db } from './db';
 import { uid } from '../lib/id';
 import { todayISO } from '../lib/format';
+import { payablesOf } from '../lib/billing';
 import { SAMPLE_LINES, SAMPLE_SESSION } from '../lib/sample';
 import {
   DEFAULT_SETTINGS,
@@ -11,9 +12,10 @@ import {
   type Player,
   type Session,
   type Settings,
+  type Payable,
   type PaymentInfo,
-  type SharedCost,
   type Snapshot,
+  type SplitMode,
   type Tombstone,
 } from '../lib/types';
 
@@ -47,12 +49,10 @@ export async function createSession(overrides: Partial<Session> = {}): Promise<s
     id: uid(),
     date: todayISO(),
     court: s.defaultCourt,
-    lightsCost: s.defaultLightsCost,
-    lightsSplit: s.defaultLightsSplit,
     visitorFee: s.defaultVisitorFee,
     rounding: s.defaultRounding,
     payment: s.payment,
-    otherCosts: [],
+    payables: (s.defaultPayables ?? []).map((p) => ({ ...p, id: uid() })),
     status: 'open',
     createdAt: now,
     ...overrides,
@@ -110,24 +110,28 @@ export async function duplicateSession(sourceId: string): Promise<string> {
   return id;
 }
 
-export async function addOtherCost(sessionId: string, cost: Omit<SharedCost, 'id'>): Promise<void> {
-  const s = await db.sessions.get(sessionId);
-  if (!s) return;
-  await updateSession(sessionId, { otherCosts: [...(s.otherCosts ?? []), { ...cost, id: uid() }] });
-}
-
-export async function updateOtherCost(sessionId: string, costId: string, patch: Partial<SharedCost>): Promise<void> {
-  const s = await db.sessions.get(sessionId);
-  if (!s) return;
-  await updateSession(sessionId, {
-    otherCosts: s.otherCosts.map((c) => (c.id === costId ? { ...c, ...patch } : c)),
+/**
+ * Applies a change to a session's payables inside one transaction, so two quick
+ * edits cannot both read the old list and overwrite each other.
+ */
+export async function mutatePayables(sessionId: string, mutate: (current: Payable[]) => Payable[]): Promise<void> {
+  await db.transaction('rw', db.sessions, async () => {
+    const stored = await db.sessions.get(sessionId);
+    if (!stored) return;
+    await db.sessions.update(sessionId, { payables: mutate(payablesOf(stored)), ...stamp() });
   });
 }
 
-export async function removeOtherCost(sessionId: string, costId: string): Promise<void> {
-  const s = await db.sessions.get(sessionId);
-  if (!s) return;
-  await updateSession(sessionId, { otherCosts: s.otherCosts.filter((c) => c.id !== costId) });
+export const addPayable = (sessionId: string, label = '', split: SplitMode = 'perGame') =>
+  mutatePayables(sessionId, (cur) => [...cur, { id: uid(), label, amount: 0, split }]);
+
+/** Same, for the default payables a new session starts from. */
+export async function mutateDefaultPayables(mutate: (current: Payable[]) => Payable[]): Promise<void> {
+  await db.transaction('rw', db.settings, async () => {
+    const stored = await db.settings.get('app');
+    const current = { ...DEFAULT_SETTINGS, ...(stored ?? {}), key: 'app' as const };
+    await db.settings.put({ ...current, defaultPayables: mutate(current.defaultPayables ?? []), ...stamp() });
+  });
 }
 
 // ---------- payment details ----------
@@ -445,7 +449,7 @@ export async function importBackup(backup: BackupFile, mode: 'replace' | 'merge'
     ]);
     await db.players.bulkPut(backup.players.map((p) => ({ ...p, updatedAt: p.updatedAt ?? p.createdAt ?? now, dirty: 1 })));
     await db.sessions.bulkPut(
-      backup.sessions.map((s) => ({ ...s, otherCosts: s.otherCosts ?? [], updatedAt: s.updatedAt ?? now, dirty: 1 })),
+      backup.sessions.map((s) => ({ ...s, payables: payablesOf(s), updatedAt: s.updatedAt ?? now, dirty: 1 })),
     );
     await db.entries.bulkPut(backup.entries.map((e) => ({ ...e, updatedAt: e.updatedAt ?? now, dirty: 1 })));
     if (backup.settings) await db.settings.put({ ...DEFAULT_SETTINGS, ...backup.settings, key: 'app', ...stamp() });

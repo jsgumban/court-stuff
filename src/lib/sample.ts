@@ -4,11 +4,9 @@ import type { Entry, Session } from './types';
 export const SAMPLE_SESSION: Omit<Session, 'id' | 'createdAt' | 'updatedAt'> = {
   date: '2026-09-02',
   court: 'Malindang',
-  lightsCost: 600,
-  lightsSplit: 'perGame',
+  payables: [{ id: 'lights', label: 'Lights', amount: 600, split: 'perGame' }],
   visitorFee: 100,
   rounding: 'exact',
-  otherCosts: [],
   status: 'open',
 };
 

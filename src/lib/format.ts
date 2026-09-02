@@ -1,4 +1,4 @@
-import type { LineBill, SessionBill } from './billing';
+import { payablesOf, type LineBill, type SessionBill } from './billing';
 import { resolvePayment } from './payment';
 import type { Session, Settings } from './types';
 
@@ -89,25 +89,20 @@ export function buildChatMessage(session: Session, bill: SessionBill, settings: 
   out.push(formatDateShort(session.date));
   out.push('');
 
-  const perGameCosts = [
-    ...(session.lightsSplit === 'perGame' ? [{ label: 'Lights', amount: session.lightsCost }] : []),
-    ...session.otherCosts.filter((x) => x.split === 'perGame'),
-  ];
-  const equalCosts = [
-    ...(session.lightsSplit === 'equal' ? [{ label: 'Lights', amount: session.lightsCost }] : []),
-    ...session.otherCosts.filter((x) => x.split === 'equal'),
-  ];
+  const payables = payablesOf(session).filter((x) => x.amount > 0 || x.label.trim());
+  const perGameCosts = payables.filter((x) => x.split === 'perGame');
+  const equalCosts = payables.filter((x) => x.split === 'equal');
 
   if (perGameCosts.length) {
-    for (const cost of perGameCosts) out.push(`${cost.label} = ${formatMoney(cost.amount, c)}`);
+    for (const cost of perGameCosts) out.push(`${cost.label || 'Cost'} = ${formatMoney(cost.amount, c)}`);
     out.push(`- Total # of games = ${pluralGames(bill.totalGames)}`);
-    out.push(perGameCosts.length === 1 ? `- ${perGameCosts[0].label} amount/games` : '- Amount/games');
+    out.push(perGameCosts.length === 1 ? `- ${perGameCosts[0].label || 'Cost'} amount/games` : '- Amount/games');
     out.push(`= ${formatMoney(bill.perGamePool, c)}/${formatNumber(bill.totalGames)}`);
     out.push(`= ${formatMoney(bill.rate, c)} per game`);
     out.push('');
   }
   if (equalCosts.length) {
-    for (const cost of equalCosts) out.push(`${cost.label} = ${formatMoney(cost.amount, c)}`);
+    for (const cost of equalCosts) out.push(`${cost.label || 'Cost'} = ${formatMoney(cost.amount, c)}`);
     out.push(`- Split equally among ${bill.headcount}`);
     out.push(`= ${formatMoney(bill.equalPool, c)}/${bill.headcount}`);
     out.push(`= ${formatMoney(bill.equalShare, c)} each`);

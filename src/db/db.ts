@@ -55,6 +55,42 @@ export class CourtBillsDB extends Dexie {
       });
     // A safety copy is taken before anything wipes the device, so nothing is lost silently.
     this.version(3).stores({ snapshots: 'key, createdAt' });
+    // Lights stopped being special: every cost is now an entry in `payables`.
+    this.version(4)
+      .stores({})
+      .upgrade(async (tx) => {
+        await tx
+          .table('sessions')
+          .toCollection()
+          .modify((s: Record<string, unknown>) => {
+            if (s.payables) return;
+            const list: Array<Record<string, unknown>> = [];
+            if (typeof s.lightsCost === 'number') {
+              list.push({ id: 'lights', label: 'Lights', amount: s.lightsCost, split: s.lightsSplit ?? 'perGame' });
+            }
+            for (const c of (s.otherCosts as Array<Record<string, unknown>>) ?? []) list.push(c);
+            s.payables = list;
+            delete s.lightsCost;
+            delete s.lightsSplit;
+            delete s.otherCosts;
+            s.dirty = 1;
+            s.updatedAt = Date.now();
+          });
+        await tx
+          .table('settings')
+          .toCollection()
+          .modify((s: Record<string, unknown>) => {
+            if (s.defaultPayables) return;
+            s.defaultPayables =
+              typeof s.defaultLightsCost === 'number'
+                ? [{ id: 'lights', label: 'Lights', amount: s.defaultLightsCost, split: s.defaultLightsSplit ?? 'perGame' }]
+                : [];
+            delete s.defaultLightsCost;
+            delete s.defaultLightsSplit;
+            s.dirty = 1;
+            s.updatedAt = Date.now();
+          });
+      });
   }
 }
 

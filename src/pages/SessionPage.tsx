@@ -4,6 +4,7 @@ import { Breakdown } from '../components/Breakdown';
 import { ConfirmButton } from '../components/ConfirmButton';
 import { Loading } from '../components/EmptyState';
 import { Field, NumberField, TextAreaField, TextField } from '../components/Fields';
+import { PayableList } from '../components/PayableList';
 import { PaymentEditor } from '../components/PaymentEditor';
 import { PaymentQR, hasPayment } from '../components/PaymentQR';
 import { ShareCard } from '../components/ShareCard';
@@ -13,7 +14,6 @@ import { Switch } from '../components/Switch';
 import { useToast } from '../components/Toast';
 import {
   addEntry,
-  addOtherCost,
   addPeopleFromSession,
   addRegulars,
   deleteSession,
@@ -21,21 +21,20 @@ import {
   moveEntry,
   parseNames,
   patchSessionPayment,
+  mutatePayables,
   removeEntry,
-  removeOtherCost,
   setAllPaid,
   setEntryPaid,
   updateEntry,
-  updateOtherCost,
   updateSession,
 } from '../db/repo';
 import { useEntries, usePlayers, useSession, useSessions, useSettings } from '../hooks/useData';
-import { computeBill, matchesFromSlots, type LineBill, type SessionBill } from '../lib/billing';
+import { computeBill, matchesFromSlots, payablesOf, type LineBill, type SessionBill } from '../lib/billing';
 import { canShare, copyText, shareText } from '../lib/browser';
 import { cx } from '../lib/cx';
 import { buildChatMessage, formatDateLong, formatDateShort, formatMoney, lineFormula, pluralGames } from '../lib/format';
 import { isPaymentSet, resolvePayment } from '../lib/payment';
-import type { Entry, PaymentInfo, Player, Rounding, Session, Settings, SplitMode } from '../lib/types';
+import type { Entry, PaymentInfo, Player, Rounding, Session, Settings } from '../lib/types';
 import NotFound from './NotFound';
 
 type OpenSheet = null | 'edit' | 'share' | { person: string };
@@ -313,9 +312,6 @@ function AddPeople({ session, entries, players, previous }: { session: Session; 
 // ---------------------------------------------------------------------------
 // Sheets
 
-/** Common extras, offered as one-tap adds so payables are quick to enter. */
-const PAYABLE_PRESETS = ['Shuttlecocks', 'Balls', 'Court rental', 'Water', 'Snacks'];
-
 /** Everything about this night in one place: what it cost, who it is for, and the admin actions. */
 function EditSheet({
   open,
@@ -338,7 +334,6 @@ function EditSheet({
   const courts = [...new Set(sessions.map((s) => s.court).filter(Boolean))];
   const matches = matchesFromSlots(bill.totalGames, settings.playersPerGame);
   const gameKind = settings.playersPerGame === 2 ? 'singles' : settings.playersPerGame === 4 ? 'doubles' : `${settings.playersPerGame}-player`;
-  const usedLabels = new Set(session.otherCosts.map((x) => x.label.toLowerCase()));
 
   return (
     <Sheet open={open} onClose={onClose} title="Edit session" subtitle="What the night cost, and everything else about it">
@@ -356,47 +351,12 @@ function EditSheet({
         </Field>
       </div>
 
-      {/* Payables: lights is simply the first one */}
       <h3 className="label mb-2 mt-5">What was paid for</h3>
-      <div className="space-y-2">
-        <PayableRow
-          label="Lights"
-          amount={session.lightsCost}
-          split={session.lightsSplit}
-          currency={c}
-          onAmount={(v) => updateSession(session.id, { lightsCost: v })}
-          onSplit={(v) => updateSession(session.id, { lightsSplit: v })}
-        />
-        {session.otherCosts.map((cost) => (
-          <PayableRow
-            key={cost.id}
-            label={cost.label}
-            editableLabel
-            amount={cost.amount}
-            split={cost.split}
-            currency={c}
-            onLabel={(v) => updateOtherCost(session.id, cost.id, { label: v })}
-            onAmount={(v) => updateOtherCost(session.id, cost.id, { amount: v })}
-            onSplit={(v) => updateOtherCost(session.id, cost.id, { split: v })}
-            onRemove={() => removeOtherCost(session.id, cost.id)}
-          />
-        ))}
-      </div>
-
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        {PAYABLE_PRESETS.filter((label) => !usedLabels.has(label.toLowerCase())).map((label) => (
-          <button
-            key={label}
-            className="chip border border-line hover:bg-surface-2"
-            onClick={() => addOtherCost(session.id, { label, amount: 0, split: label === 'Water' || label === 'Snacks' ? 'equal' : 'perGame' })}
-          >
-            ＋ {label}
-          </button>
-        ))}
-        <button className="chip border border-line hover:bg-surface-2" onClick={() => addOtherCost(session.id, { label: '', amount: 0, split: 'perGame' })}>
-          ＋ Something else
-        </button>
-      </div>
+      <PayableList
+        payables={payablesOf(session)}
+        onMutate={(mutate) => mutatePayables(session.id, mutate)}
+        currency={c}
+      />
 
       {/* What that adds up to */}
       <div className="mt-3 space-y-1.5 rounded-xl bg-surface-2 p-3">
@@ -471,52 +431,6 @@ function EditSheet({
         </ConfirmButton>
       </div>
     </Sheet>
-  );
-}
-
-function PayableRow({
-  label,
-  editableLabel,
-  amount,
-  split,
-  currency,
-  onLabel,
-  onAmount,
-  onSplit,
-  onRemove,
-}: {
-  label: string;
-  editableLabel?: boolean;
-  amount: number;
-  split: SplitMode;
-  currency: string;
-  onLabel?: (v: string) => void;
-  onAmount: (v: number) => void;
-  onSplit: (v: SplitMode) => void;
-  onRemove?: () => void;
-}) {
-  return (
-    <div className="rounded-xl border border-line p-2.5">
-      <div className="flex items-center gap-2">
-        {editableLabel ? (
-          <TextField className="flex-1" value={label} onCommit={(v) => onLabel?.(v)} placeholder="What for" />
-        ) : (
-          <span className="flex-1 px-1 font-medium">{label}</span>
-        )}
-        {onRemove && (
-          <button className="btn btn-ghost btn-sm shrink-0" aria-label={`Remove ${label || 'payable'}`} onClick={onRemove}>
-            ✕
-          </button>
-        )}
-      </div>
-      <div className="mt-2 flex items-center gap-2">
-        <NumberField className="flex-1" prefix={currency} value={amount} onCommit={onAmount} />
-        <select className="input w-auto shrink-0" aria-label={`How ${label || 'this'} is split`} value={split} onChange={(e) => onSplit(e.target.value as SplitMode)}>
-          <option value="perGame">Per game</option>
-          <option value="equal">Split equally</option>
-        </select>
-      </div>
-    </div>
   );
 }
 

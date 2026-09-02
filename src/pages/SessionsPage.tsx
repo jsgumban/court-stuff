@@ -6,6 +6,7 @@ import { useToast } from '../components/Toast';
 import { seedSample } from '../db/repo';
 import { useSessionSummaries, useSettings } from '../hooks/useData';
 import { formatMoney, formatMonth, pluralGames, todayISO } from '../lib/format';
+import { payablesOf } from '../lib/billing';
 import type { SessionSummary } from '../lib/stats';
 import { useSync } from '../sync/engine';
 
@@ -118,7 +119,11 @@ function SessionCard({ s, currency }: { s: SessionSummary; currency: string }) {
           {s.session.status === 'closed' && <span className="pill bg-surface-2 text-muted">closed</span>}
         </div>
         <div className="num mt-0.5 text-xs text-muted">
-          {s.headcount} {s.headcount === 1 ? 'person' : 'people'} · {pluralGames(s.totalGames)} · lights {formatMoney(s.session.lightsCost, currency)}
+          {s.headcount} {s.headcount === 1 ? 'person' : 'people'} · {pluralGames(s.totalGames)} · costs{' '}
+          {formatMoney(
+            payablesOf(s.session).reduce((sum, p) => sum + (p.amount || 0), 0),
+            currency,
+          )}
         </div>
       </div>
       <div className="shrink-0 text-right">

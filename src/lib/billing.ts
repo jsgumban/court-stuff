@@ -1,4 +1,4 @@
-import type { Entry, Rounding, Session } from './types';
+import type { Entry, Payable, Rounding, Session } from './types';
 
 export interface LineBill {
   entry: Entry;
@@ -33,6 +33,19 @@ export interface SessionBill {
   paidCount: number;
 }
 
+/**
+ * Everything this session charges for. Sessions saved before payables were
+ * generalised still carry `lightsCost` and `otherCosts`, so read both shapes.
+ */
+export function payablesOf(session: Partial<Session>): Payable[] {
+  if (session.payables) return session.payables;
+  const legacy: Payable[] = [];
+  if (session.lightsCost !== undefined) {
+    legacy.push({ id: 'lights', label: 'Lights', amount: session.lightsCost, split: session.lightsSplit ?? 'perGame' });
+  }
+  return legacy.concat(session.otherCosts ?? []);
+}
+
 export const round2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100;
 
 export function roundRate(raw: number, rounding: Rounding): number {
@@ -52,13 +65,11 @@ export function computeBill(session: Session, entries: Entry[]): SessionBill {
   const headcount = sorted.length;
   const totalGames = sorted.reduce((s, e) => s + (e.games || 0), 0);
 
-  const other = session.otherCosts ?? [];
-  const perGamePool =
-    (session.lightsSplit === 'perGame' ? session.lightsCost : 0) +
-    other.filter((c) => c.split === 'perGame').reduce((s, c) => s + c.amount, 0);
-  const equalPool =
-    (session.lightsSplit === 'equal' ? session.lightsCost : 0) +
-    other.filter((c) => c.split === 'equal').reduce((s, c) => s + c.amount, 0);
+  const payables = payablesOf(session);
+  const sum = (mode: 'perGame' | 'equal') =>
+    payables.filter((c) => c.split === mode).reduce((s, c) => s + (c.amount || 0), 0);
+  const perGamePool = sum('perGame');
+  const equalPool = sum('equal');
 
   const rawRate = totalGames > 0 ? perGamePool / totalGames : 0;
   const rate = totalGames > 0 ? roundRate(rawRate, session.rounding) : 0;

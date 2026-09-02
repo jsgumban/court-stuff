@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { computeBill, matchesFromSlots, roundRate } from './billing';
 import { buildChatMessage } from './format';
 import { SAMPLE_LINES, SAMPLE_SESSION } from './sample';
-import { DEFAULT_SETTINGS, type Entry, type Session } from './types';
+import { DEFAULT_SETTINGS, type Entry, type Payable, type Session } from './types';
+
+const payable = (label: string, amount: number, split: 'perGame' | 'equal' = 'perGame'): Payable => ({
+  id: label.toLowerCase(),
+  label,
+  amount,
+  split,
+});
 
 const session: Session = { ...SAMPLE_SESSION, id: 's1', createdAt: 0, updatedAt: 0 };
 const entries: Entry[] = SAMPLE_LINES.map((l, i) => ({
@@ -79,7 +86,7 @@ describe('rounding and edge cases', () => {
   });
 
   it('rounds the rate and reports the variance', () => {
-    const odd = { ...session, lightsCost: 600 };
+    const odd = { ...session };
     const twentyThree = entries.slice(0, 16).concat([{ ...entries[16], games: 0 }]); // 23 games
     const exact = computeBill({ ...odd, rounding: 'exact' }, twentyThree);
     expect(exact.rate).toBe(26.09);
@@ -95,7 +102,7 @@ describe('rounding and edge cases', () => {
   it('splits equal-share costs per head and extras per line', () => {
     const s: Session = {
       ...session,
-      otherCosts: [{ id: 'c1', label: 'Shuttlecocks', amount: 170, split: 'equal' }],
+      payables: [...session.payables, payable('Shuttlecocks', 170, 'equal')],
     };
     const withExtra = entries.map((e, i) => (i === 0 ? { ...e, extra: 40, extraNote: 'water' } : e));
     const bill = computeBill(s, withExtra);
@@ -105,13 +112,48 @@ describe('rounding and edge cases', () => {
     expect(bill.billed).toBe(bill.expected);
   });
 
-  it('adds per-game costs into the same rate as lights', () => {
+  it('pools every per-game payable into one rate', () => {
     const s: Session = {
       ...session,
-      otherCosts: [{ id: 'c1', label: 'Balls', amount: 120, split: 'perGame' }],
+      payables: [...session.payables, payable('Balls', 120)],
     };
     const bill = computeBill(s, entries);
     expect(bill.perGamePool).toBe(720);
     expect(bill.rate).toBe(30);
+  });
+});
+
+describe('payables are all equal citizens', () => {
+  it('works with no lights at all', () => {
+    const s: Session = {
+      ...session,
+      payables: [payable('Court rental', 480), payable('Shuttlecocks', 170, 'equal')],
+    };
+    const bill = computeBill(s, entries);
+    expect(bill.rate).toBe(20); // 480 / 24
+    expect(bill.equalShare).toBe(10); // 170 / 17
+    expect(bill.expected).toBe(480 + 170 + 400);
+    expect(bill.billed).toBe(bill.expected);
+  });
+
+  it('reads sessions saved before payables were generalised', () => {
+    const legacy = {
+      ...session,
+      payables: undefined,
+      lightsCost: 600,
+      lightsSplit: 'perGame',
+      otherCosts: [payable('Balls', 120)],
+    } as unknown as Session;
+    const bill = computeBill(legacy, entries);
+    expect(bill.perGamePool).toBe(720);
+    expect(bill.rate).toBe(30);
+  });
+
+  it('names each payable in the chat message', () => {
+    const s: Session = { ...session, payables: [payable('Court rental', 600), payable('Water', 170, 'equal')] };
+    const msg = buildChatMessage(s, computeBill(s, entries), DEFAULT_SETTINGS);
+    expect(msg).toContain('Court rental = ₱600');
+    expect(msg).toContain('- Court rental amount/games');
+    expect(msg).toContain('Water = ₱170');
   });
 });

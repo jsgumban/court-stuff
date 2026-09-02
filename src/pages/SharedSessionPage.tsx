@@ -3,7 +3,7 @@ import { useParams } from 'react-router';
 import { Breakdown } from '../components/Breakdown';
 import { PaymentQR, hasPayment } from '../components/PaymentQR';
 import { Sheet } from '../components/Sheet';
-import { computeBill, matchesFromSlots, type LineBill, type SessionBill } from '../lib/billing';
+import { computeBill, matchesFromSlots, payablesOf, type LineBill, type SessionBill } from '../lib/billing';
 import { canShare, copyText, shareText } from '../lib/browser';
 import { cx } from '../lib/cx';
 import { buildChatMessage, formatDateLong, formatDateShort, formatMoney, lineFormula, pluralGames } from '../lib/format';
@@ -116,14 +116,11 @@ export default function SharedSessionPage() {
         )}
 
         {/* What the money was for */}
-        {(session.lightsCost > 0 || (session.otherCosts ?? []).length > 0) && (
+        {payablesOf(session).length > 0 && (
           <section className="card mt-3 overflow-hidden">
             <h2 className="stat-label px-4 pt-3">What was paid for</h2>
             <ul className="mt-1 divide-y divide-line">
-              {[
-                ...(session.lightsCost > 0 ? [{ id: 'lights', label: 'Lights', amount: session.lightsCost, split: session.lightsSplit }] : []),
-                ...(session.otherCosts ?? []),
-              ].map((cost) => (
+              {payablesOf(session).map((cost) => (
                 <li key={cost.id} className="flex items-center gap-3 px-4 py-2.5">
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium">{cost.label || 'Other'}</span>

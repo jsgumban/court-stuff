@@ -1,12 +1,15 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { Loading } from '../components/EmptyState';
-import { Field, NumberField } from '../components/Fields';
+import { Field } from '../components/Fields';
+import { PayableList } from '../components/PayableList';
 import { useToast } from '../components/Toast';
 import { createSessionWithPeople, parseNames, type NewSessionPerson } from '../db/repo';
 import { useEntries, usePlayers, useSessions, useSettings } from '../hooks/useData';
 import { cx } from '../lib/cx';
-import { formatDateShort, formatMoney, todayISO } from '../lib/format';
+import { formatDateShort, todayISO } from '../lib/format';
+import { uid } from '../lib/id';
+import type { Payable } from '../lib/types';
 
 const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
 
@@ -26,21 +29,18 @@ export default function NewSessionPage() {
   const [step, setStep] = useState<1 | 2>(1);
   const [court, setCourt] = useState<string | null>(null);
   const [date, setDate] = useState(todayISO());
-  const [lights, setLights] = useState<number | null>(null);
+  const [payables, setPayables] = useState<Payable[] | null>(null);
   const [picked, setPicked] = useState<NewSessionPerson[]>([]);
   const [namesText, setNamesText] = useState('');
   const [busy, setBusy] = useState(false);
 
   const recentCourts = useMemo(() => [...new Set((sessions ?? []).map((s) => s.court).filter(Boolean))].slice(0, 5), [sessions]);
-  const recentLights = useMemo(
-    () => [...new Set((sessions ?? []).map((s) => s.lightsCost).filter((n) => n > 0))].slice(0, 4),
-    [sessions],
-  );
+
 
   if (!settings || !sessions || !players) return <Loading />;
 
   const courtValue = court ?? settings.defaultCourt ?? '';
-  const lightsValue = lights ?? settings.defaultLightsCost;
+  const payableValue = payables ?? (settings.defaultPayables ?? []).map((p) => ({ ...p, id: uid() }));
   const c = settings.currency;
 
   const pickedKeys = new Set(picked.map((p) => p.playerId ?? norm(p.name)));
@@ -78,7 +78,7 @@ export default function NewSessionPage() {
     setBusy(true);
     try {
       const id = await createSessionWithPeople(
-        { court: courtValue.trim() || settings.defaultCourt, date, lightsCost: lightsValue },
+        { court: courtValue.trim() || settings.defaultCourt, date, payables: payableValue },
         picked,
       );
       toast.show(picked.length ? `Session started with ${picked.length} ${picked.length === 1 ? 'person' : 'people'}` : 'Session started');
@@ -101,7 +101,7 @@ export default function NewSessionPage() {
         <>
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Tonight's court</h1>
-            <p className="mt-1 text-sm text-muted">Two quick questions, then you pick who played.</p>
+            <p className="mt-1 text-sm text-muted">Where you played and what it cost, then who was there.</p>
           </div>
 
           <section className="card space-y-4 p-4">
@@ -133,23 +133,11 @@ export default function NewSessionPage() {
               <input type="date" className="input" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} />
             </Field>
 
-            <Field label="Lights cost" hint="What the court charged for the lights tonight">
-              <NumberField prefix={c} value={lightsValue} onCommit={setLights} />
-              {recentLights.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {recentLights.map((amount) => (
-                    <button
-                      key={amount}
-                      type="button"
-                      className={cx('chip border', amount === lightsValue ? 'border-accent bg-accent text-accent-fg' : 'border-line hover:bg-surface-2')}
-                      onClick={() => setLights(amount)}
-                    >
-                      {formatMoney(amount, c)}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </Field>
+            <div>
+              <span className="label">What was paid for</span>
+              <p className="mb-2 text-xs text-muted">Lights, shuttlecocks, court rental, anything. Each one splits its own way.</p>
+              <PayableList payables={payableValue} onMutate={(mutate) => setPayables((cur) => mutate(cur ?? payableValue))} currency={c} />
+            </div>
           </section>
 
           <button className="btn btn-primary w-full" onClick={() => setStep(2)}>

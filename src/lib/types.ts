@@ -36,23 +36,32 @@ export interface Player extends Synced {
   createdAt: number;
 }
 
-export interface SharedCost {
+/** One thing the night cost: lights, shuttlecocks, court rental, anything. */
+export interface Payable {
   id: string;
   label: string;
   amount: number;
   split: SplitMode;
 }
 
+/** @deprecated Kept so older rows still parse. Use Payable. */
+export type SharedCost = Payable;
+
 export interface Session extends Synced {
   id: string;
   /** ISO date, YYYY-MM-DD (local). */
   date: string;
   court: string;
-  lightsCost: number;
-  lightsSplit: SplitMode;
+  /** Everything the night cost, in order. Nothing here is special-cased. */
+  payables: Payable[];
   visitorFee: number;
   rounding: Rounding;
-  otherCosts: SharedCost[];
+  /** @deprecated Migrated into `payables`; still read so old rows keep working. */
+  lightsCost?: number;
+  /** @deprecated Migrated into `payables`. */
+  lightsSplit?: SplitMode;
+  /** @deprecated Migrated into `payables`. */
+  otherCosts?: Payable[];
   notes?: string;
   /** Who collects for this night. Falls back to the default in Settings when unset. */
   payment?: PaymentInfo;
@@ -81,11 +90,15 @@ export interface Settings extends Partial<Synced> {
   key: 'app';
   currency: string;
   defaultCourt: string;
-  defaultLightsCost: number;
+  /** The payables a new session starts with. */
+  defaultPayables: Payable[];
   defaultVisitorFee: number;
   visitorFeeLabel: string;
   defaultRounding: Rounding;
-  defaultLightsSplit: SplitMode;
+  /** @deprecated Migrated into `defaultPayables`. */
+  defaultLightsCost?: number;
+  /** @deprecated Migrated into `defaultPayables`. */
+  defaultLightsSplit?: SplitMode;
   /** Used for the "24 game slots = 6 doubles matches" sanity hint. 4 = doubles, 2 = singles. */
   playersPerGame: number;
   payment?: PaymentInfo;
@@ -95,11 +108,10 @@ export const DEFAULT_SETTINGS: Settings = {
   key: 'app',
   currency: '₱',
   defaultCourt: 'Malindang',
-  defaultLightsCost: 600,
+  defaultPayables: [{ id: 'lights', label: 'Lights', amount: 600, split: 'perGame' }],
   defaultVisitorFee: 100,
   visitorFeeLabel: 'Visitor fee',
   defaultRounding: 'exact',
-  defaultLightsSplit: 'perGame',
   playersPerGame: 4,
 };
 

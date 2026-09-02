@@ -3,15 +3,16 @@ import { useNavigate } from 'react-router';
 import { ConfirmButton } from '../components/ConfirmButton';
 import { Loading } from '../components/EmptyState';
 import { Field, NumberField, TextField } from '../components/Fields';
+import { PayableList } from '../components/PayableList';
 import { PaymentCard } from '../components/PaymentCard';
 import { SnapshotCard } from '../components/SnapshotCard';
 import { SyncCard } from '../components/SyncCard';
 import { useToast } from '../components/Toast';
-import { clearAll, exportBackup, importBackup, parseBackup, saveSettings, seedSample } from '../db/repo';
+import { clearAll, exportBackup, importBackup, mutateDefaultPayables, parseBackup, saveSettings, seedSample } from '../db/repo';
 import { usePlayers, useSessions, useSettings } from '../hooks/useData';
 import { downloadText } from '../lib/browser';
 import { todayISO } from '../lib/format';
-import type { Rounding, SplitMode } from '../lib/types';
+import type { Rounding } from '../lib/types';
 import { useSync } from '../sync/engine';
 
 export default function SettingsPage() {
@@ -70,9 +71,6 @@ export default function SettingsPage() {
           <Field label="Currency symbol">
             <TextField value={settings.currency} onCommit={(v) => saveSettings({ currency: v.trim() || '₱' })} className="w-24" />
           </Field>
-          <Field label="Lights cost">
-            <NumberField prefix={c} value={settings.defaultLightsCost} onCommit={(v) => saveSettings({ defaultLightsCost: v })} />
-          </Field>
           <Field label="Visitor fee">
             <NumberField prefix={c} value={settings.defaultVisitorFee} onCommit={(v) => saveSettings({ defaultVisitorFee: v })} />
           </Field>
@@ -82,12 +80,6 @@ export default function SettingsPage() {
           <Field label="Players per game" hint="4 = doubles, 2 = singles. Used only for the tally sanity check.">
             <NumberField min={1} value={settings.playersPerGame} onCommit={(v) => saveSettings({ playersPerGame: Math.max(1, Math.round(v)) })} />
           </Field>
-          <Field label="Split lights">
-            <select className="input" value={settings.defaultLightsSplit} onChange={(e) => saveSettings({ defaultLightsSplit: e.target.value as SplitMode })}>
-              <option value="perGame">Per game played</option>
-              <option value="equal">Equally per person</option>
-            </select>
-          </Field>
           <Field label="Rounding of the rate">
             <select className="input" value={settings.defaultRounding} onChange={(e) => saveSettings({ defaultRounding: e.target.value as Rounding })}>
               <option value="exact">Exact (centavos)</option>
@@ -96,6 +88,10 @@ export default function SettingsPage() {
             </select>
           </Field>
         </div>
+
+        <h3 className="label mb-2 mt-5">Payables a new session starts with</h3>
+        <p className="mb-2 text-xs text-muted">Whatever you usually pay for. You can change them on any session.</p>
+        <PayableList payables={settings.defaultPayables ?? []} onMutate={mutateDefaultPayables} currency={c} />
       </section>
 
       <section className="card p-4">
