@@ -43,6 +43,8 @@ Open it on a phone on the same Wi-Fi with `npm run dev -- --host`. On the Sessio
 
 ## What it does
 
+The session screen is built around how often things are actually done. The rate per game is the headline; the people list has two lenses, **Games** for tallying with a stepper on each row and **Payments** where tapping a name marks it paid. Costs, session details, per-person edits and sharing open as sheets, so the main screen stays a short scroll instead of a wall of controls.
+
 - **Lights per game.** Rate = lights ÷ total games across everyone. Each person pays games × rate. Visitors get the visitor fee added. Extras (water, shuttles, a discount) can be added per line.
 - **Paid tracking.** Tap *Mark paid* per person; the summary shows collected vs. unpaid, and the announcement puts ✅ next to paid names.
 - **Copy / Share announcement.** One tap copies the message in the group-chat format above (or opens the phone's share sheet).

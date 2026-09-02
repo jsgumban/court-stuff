@@ -3,8 +3,9 @@ import { Link, useNavigate, useParams } from 'react-router';
 import { ConfirmButton } from '../components/ConfirmButton';
 import { Loading } from '../components/EmptyState';
 import { Field, NumberField, TextAreaField, TextField } from '../components/Fields';
-import { Money } from '../components/Money';
+import { Segmented } from '../components/Segmented';
 import { ShareCard } from '../components/ShareCard';
+import { Sheet } from '../components/Sheet';
 import { Stepper } from '../components/Stepper';
 import { Switch } from '../components/Switch';
 import { useToast } from '../components/Toast';
@@ -28,286 +29,214 @@ import { useEntries, usePlayers, useSession, useSessions, useSettings } from '..
 import { computeBill, matchesFromSlots, type LineBill, type SessionBill } from '../lib/billing';
 import { canShare, copyText, shareText } from '../lib/browser';
 import { cx } from '../lib/cx';
-import { buildChatMessage, formatDateShort, formatMoney, formatNumber, lineFormula, pluralGames } from '../lib/format';
+import { buildChatMessage, formatDateLong, formatDateShort, formatMoney, lineFormula, pluralGames } from '../lib/format';
 import type { Entry, Player, Rounding, Session, Settings, SplitMode } from '../lib/types';
 import NotFound from './NotFound';
 
+type Mode = 'tally' | 'payments';
+type OpenSheet = null | 'costs' | 'details' | 'share' | { person: string };
+
 export default function SessionPage() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
-  const toast = useToast();
   const session = useSession(id);
   const entries = useEntries(id);
   const settings = useSettings();
   const players = usePlayers();
   const sessions = useSessions();
+  const [mode, setMode] = useState<Mode>('tally');
+  const [sheet, setSheet] = useState<OpenSheet>(null);
 
   if (session === undefined || !entries || !settings) return <Loading />;
   if (session === null) return <NotFound what="session" />;
 
   const bill = computeBill(session, entries);
-  const message = buildChatMessage(session, bill, settings);
   const c = settings.currency;
   const previous = sessions?.find(
     (s) => s.id !== session.id && (s.date < session.date || (s.date === session.date && s.createdAt < session.createdAt)),
   );
-  const courts = [...new Set((sessions ?? []).map((s) => s.court).filter(Boolean))];
-
-  const onCopy = async () => {
-    toast.show((await copyText(message)) ? 'Message copied — paste it in the group chat' : 'Could not copy on this browser', 'ok');
-  };
-  const onShare = () => shareText(`${session.court} ${formatDateShort(session.date)}`, message);
-  const onDuplicate = async () => {
-    const nid = await duplicateSession(session.id);
-    toast.show('New session for today with the same people');
-    navigate(`/session/${nid}`);
-  };
-  const onDelete = async () => {
-    await deleteSession(session.id);
-    toast.show('Session deleted');
-    navigate('/');
-  };
+  const personSheet = sheet && typeof sheet === 'object' ? bill.lines.find((l) => l.entry.id === sheet.person) : undefined;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
+      {/* Identity + the one number that matters */}
       <div className="flex items-center justify-between">
         <Link to="/" className="btn btn-ghost btn-sm -ml-2">
           ← Sessions
         </Link>
-        <div className="flex gap-2">
-          <button className="btn btn-primary btn-sm" onClick={onCopy}>
-            Copy message
-          </button>
-          {canShare() && (
-            <button className="btn btn-sm" onClick={onShare}>
-              Share
-            </button>
-          )}
-        </div>
+        <button className="btn btn-primary btn-sm" onClick={() => setSheet('share')}>
+          Share bill
+        </button>
       </div>
 
-      {/* Header */}
-      <section className="card p-4">
-        <div className="grid gap-3 sm:grid-cols-[1fr_180px]">
-          <Field label="Court">
-            <TextField
-              className="text-lg font-semibold"
-              value={session.court}
-              onCommit={(v) => updateSession(session.id, { court: v.trim() })}
-              list="court-names"
-              placeholder="Court name"
-            />
-            <datalist id="court-names">
-              {courts.map((name) => (
-                <option key={name} value={name} />
-              ))}
-            </datalist>
-          </Field>
-          <Field label="Date">
-            <input type="date" className="input" value={session.date} onChange={(e) => e.target.value && updateSession(session.id, { date: e.target.value })} />
-          </Field>
-        </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <span className={cx('pill', session.status === 'open' ? 'bg-ok-soft text-ok' : 'bg-surface-2 text-muted')}>
-            {session.status === 'open' ? 'Open' : 'Closed'}
-          </span>
-          <button className="btn btn-sm" onClick={() => updateSession(session.id, { status: session.status === 'open' ? 'closed' : 'open' })}>
-            {session.status === 'open' ? 'Close session' : 'Reopen'}
-          </button>
-          <button className="btn btn-sm" onClick={onDuplicate}>
-            Duplicate for today
-          </button>
-          <ConfirmButton className="btn-sm ml-auto" onConfirm={onDelete}>
-            Delete
-          </ConfirmButton>
-        </div>
-      </section>
+      <section className="card overflow-hidden">
+        <button className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-surface-2" onClick={() => setSheet('details')}>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className="truncate text-lg font-semibold">{session.court || 'Untitled court'}</span>
+              {session.status === 'closed' && <span className="pill bg-surface-2 text-muted">closed</span>}
+            </div>
+            <div className="text-xs text-muted">{formatDateLong(session.date)}</div>
+          </div>
+          <span className="shrink-0 text-sm text-muted">Edit ›</span>
+        </button>
 
-      <CostsCard session={session} bill={bill} settings={settings} />
-      <SummaryCard bill={bill} currency={c} />
-
-      {/* People */}
-      <section className="space-y-2">
-        <div className="flex items-center justify-between px-1">
-          <h2 className="font-semibold">
-            People <span className="num text-muted">({bill.headcount})</span>
-          </h2>
-          {bill.headcount > 0 && (
-            <button className="btn btn-ghost btn-sm" onClick={() => setAllPaid(session.id, bill.paidCount < bill.headcount)}>
-              {bill.paidCount < bill.headcount ? 'Mark all paid' : 'Unmark all'}
-            </button>
+        <button className="w-full border-t border-line px-4 py-4 text-center hover:bg-surface-2" onClick={() => setSheet('costs')}>
+          {bill.perGamePool > 0 ? (
+            <>
+              <div className="num text-3xl font-semibold tracking-tight text-gold">{formatMoney(bill.rate, c)}</div>
+              <div className="stat-label mt-0.5">per game</div>
+              <div className="num mt-1.5 text-xs text-muted">
+                {formatMoney(bill.perGamePool, c)} ÷ {pluralGames(bill.totalGames)} · tap to change costs
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="text-sm font-medium">Set the lights cost</div>
+              <div className="mt-0.5 text-xs text-muted">Tap to enter what the court charged tonight</div>
+            </>
           )}
+          {bill.equalPool > 0 && (
+            <div className="num mt-1 text-xs text-muted">plus {formatMoney(bill.equalShare, c)} each, split equally</div>
+          )}
+          {bill.variance !== 0 && (
+            <div className="num mt-1 text-xs text-warn">
+              Rounding leaves the bill {formatMoney(Math.abs(bill.variance), c)} {bill.variance > 0 ? 'over' : 'short'}
+            </div>
+          )}
+        </button>
+
+        <div className="grid grid-cols-3 border-t border-line text-center">
+          <Cell label="Total" value={formatMoney(bill.billed, c)} />
+          <Cell label="Paid" value={formatMoney(bill.collected, c)} tone="text-ok" divider />
+          <Cell label="Unpaid" value={formatMoney(bill.outstanding, c)} tone={bill.outstanding > 0 ? 'text-bad' : 'text-ok'} divider />
         </div>
-        <AddPeople session={session} entries={entries} players={players ?? []} previous={previous} />
-        {bill.lines.length === 0 ? (
-          <p className="px-1 py-6 text-center text-sm text-muted">Add the people who played tonight. Each name starts at 1 game.</p>
-        ) : (
-          <ul className="space-y-2">
-            {bill.lines.map((line, i) => (
-              <EntryRow key={line.entry.id} line={line} index={i} count={bill.lines.length} bill={bill} currency={c} />
-            ))}
-          </ul>
+        {bill.headcount > 0 && (
+          <div className="border-t border-line px-4 py-2.5">
+            <div className="h-1.5 overflow-hidden rounded-full bg-line">
+              <div
+                className="h-full rounded-full bg-ok transition-all"
+                style={{ width: `${bill.billed > 0 ? Math.round((bill.collected / bill.billed) * 100) : 0}%` }}
+              />
+            </div>
+            <p className="num mt-1.5 text-center text-[11px] text-muted">
+              {bill.paidCount} of {bill.headcount} paid
+            </p>
+          </div>
         )}
       </section>
 
-      <ShareCard sessionId={session.id} title={`${session.court} ${formatDateShort(session.date)}`} />
+      {/* One list, two lenses */}
+      <Segmented
+        value={mode}
+        onChange={setMode}
+        options={[
+          { value: 'tally', label: 'Games', badge: String(bill.totalGames) },
+          { value: 'payments', label: 'Payments', badge: `${bill.paidCount}/${bill.headcount}` },
+        ]}
+      />
 
-      {/* Announcement */}
-      <section className="card p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="font-semibold">Announcement</h2>
-            <p className="text-xs text-muted">Paste this in the group chat. ✅ marks who has paid.</p>
-          </div>
-          <div className="flex gap-2">
-            <button className="btn btn-sm" onClick={onCopy}>
-              Copy
+      {mode === 'tally' && <AddPeople session={session} entries={entries} players={players ?? []} previous={previous} />}
+
+      {bill.lines.length === 0 ? (
+        <p className="px-1 py-8 text-center text-sm text-muted">
+          No one on this bill yet. Add the people who played and each starts at one game.
+        </p>
+      ) : mode === 'tally' ? (
+        <ul className="space-y-2">
+          {bill.lines.map((line) => (
+            <TallyRow key={line.entry.id} line={line} bill={bill} currency={c} onOpen={() => setSheet({ person: line.entry.id })} />
+          ))}
+        </ul>
+      ) : (
+        <>
+          <div className="flex items-center justify-between px-1">
+            <p className="text-xs text-muted">Tap a name to mark it paid.</p>
+            <button className="btn btn-ghost btn-sm" onClick={() => setAllPaid(session.id, bill.paidCount < bill.headcount)}>
+              {bill.paidCount < bill.headcount ? 'Mark all paid' : 'Unmark all'}
             </button>
-            {canShare() && (
-              <button className="btn btn-sm" onClick={onShare}>
-                Share
-              </button>
-            )}
           </div>
-        </div>
-        <Field label="Notes (added at the end of the message)" className="mt-3">
-          <TextAreaField value={session.notes ?? ''} onCommit={(v) => updateSession(session.id, { notes: v || undefined })} placeholder="e.g. GCash 09xx-xxx-xxxx" />
-        </Field>
-        <pre className="num mt-3 whitespace-pre-wrap rounded-xl bg-surface-2 p-3 text-sm leading-relaxed">{message}</pre>
-      </section>
+          <ul className="space-y-2">
+            {bill.lines.map((line) => (
+              <PaymentRow key={line.entry.id} line={line} currency={c} />
+            ))}
+          </ul>
+        </>
+      )}
+
+      <CostsSheet open={sheet === 'costs'} onClose={() => setSheet(null)} session={session} bill={bill} settings={settings} />
+      <DetailsSheet open={sheet === 'details'} onClose={() => setSheet(null)} session={session} sessions={sessions ?? []} />
+      <ShareSheet open={sheet === 'share'} onClose={() => setSheet(null)} session={session} bill={bill} settings={settings} />
+      <PersonSheet line={personSheet} bill={bill} currency={c} onClose={() => setSheet(null)} />
+    </div>
+  );
+}
+
+function Cell({ label, value, tone, divider }: { label: string; value: string; tone?: string; divider?: boolean }) {
+  return (
+    <div className={cx('px-2 py-2.5', divider && 'border-l border-line')}>
+      <div className="stat-label">{label}</div>
+      <div className={cx('num mt-0.5 font-semibold', tone)}>{value}</div>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
+// Rows
 
-function CostsCard({ session, bill, settings }: { session: Session; bill: SessionBill; settings: Settings }) {
-  const c = settings.currency;
-  const matches = matchesFromSlots(bill.totalGames, settings.playersPerGame);
-  const perGameLabels = [
-    ...(session.lightsSplit === 'perGame' ? ['Lights'] : []),
-    ...session.otherCosts.filter((x) => x.split === 'perGame').map((x) => x.label || 'Cost'),
-  ];
-  const gameKind = settings.playersPerGame === 2 ? 'singles' : settings.playersPerGame === 4 ? 'doubles' : `${settings.playersPerGame}-player`;
-
+function TallyRow({ line, bill, currency, onOpen }: { line: LineBill; bill: SessionBill; currency: string; onOpen: () => void }) {
+  const e = line.entry;
   return (
-    <section className="card p-4">
-      <h2 className="font-semibold">Lights &amp; shared costs</h2>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        <Field label="Lights cost">
-          <NumberField prefix={c} value={session.lightsCost} onCommit={(v) => updateSession(session.id, { lightsCost: v })} />
-        </Field>
-        <Field label="Split lights">
-          <select className="input" value={session.lightsSplit} onChange={(e) => updateSession(session.id, { lightsSplit: e.target.value as SplitMode })}>
-            <option value="perGame">Per game played</option>
-            <option value="equal">Equally per person</option>
-          </select>
-        </Field>
-        <Field label={settings.visitorFeeLabel} hint="Added to anyone marked as visitor">
-          <NumberField prefix={c} value={session.visitorFee} onCommit={(v) => updateSession(session.id, { visitorFee: v })} />
-        </Field>
-        <Field label="Rounding of the rate">
-          <select className="input" value={session.rounding} onChange={(e) => updateSession(session.id, { rounding: e.target.value as Rounding })}>
-            <option value="exact">Exact (centavos)</option>
-            <option value="peso">Nearest {c}1</option>
-            <option value="five">Round up to {c}5</option>
-          </select>
-        </Field>
+    <li className="card px-3 py-2.5">
+      <div className="flex items-center gap-2">
+        <button onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-2 py-1 text-left">
+          <span className="truncate font-medium">{e.label}</span>
+          {e.isVisitor && <span className="pill shrink-0 bg-warn-soft text-warn">visitor</span>}
+        </button>
+        <Stepper value={e.games} onChange={(v) => updateEntry(e.id, { games: v })} className="shrink-0" />
       </div>
-
-      <div className="mt-4">
-        <div className="flex items-center justify-between">
-          <span className="label mb-0">Other shared costs</span>
-          <button className="btn btn-ghost btn-sm" onClick={() => addOtherCost(session.id, { label: 'Shuttlecocks', amount: 0, split: 'perGame' })}>
-            ＋ Add cost
-          </button>
-        </div>
-        {session.otherCosts.length > 0 && (
-          <div className="mt-2 space-y-2">
-            {session.otherCosts.map((cost) => (
-              <div key={cost.id} className="grid grid-cols-[1fr_auto] gap-2 sm:grid-cols-[1fr_120px_170px_auto]">
-                <TextField value={cost.label} onCommit={(v) => updateOtherCost(session.id, cost.id, { label: v })} placeholder="What for" />
-                <button className="btn btn-ghost btn-sm sm:order-last" aria-label="Remove cost" onClick={() => removeOtherCost(session.id, cost.id)}>
-                  ✕
-                </button>
-                <NumberField prefix={c} value={cost.amount} onCommit={(v) => updateOtherCost(session.id, cost.id, { amount: v })} />
-                <select className="input" value={cost.split} onChange={(e) => updateOtherCost(session.id, cost.id, { split: e.target.value as SplitMode })}>
-                  <option value="perGame">Split per game</option>
-                  <option value="equal">Split equally</option>
-                </select>
-              </div>
-            ))}
-          </div>
-        )}
+      <div className="mt-0.5 flex items-baseline justify-between gap-2">
+        <span className="num truncate text-xs text-muted">{lineFormula(line, bill, currency)}</span>
+        <span className="num shrink-0 font-semibold">{formatMoney(line.total, currency)}</span>
       </div>
-
-      <div className="mt-4 space-y-2 rounded-xl bg-surface-2 p-3">
-        {bill.perGamePool > 0 && (
-          <div>
-            <div className="text-xs text-muted">{perGameLabels.join(' + ')} ÷ total games</div>
-            <div className="num text-lg font-semibold">
-              {formatMoney(bill.perGamePool, c)} ÷ {pluralGames(bill.totalGames)} = <span className="text-gold">{formatMoney(bill.rate, c)}</span> per game
-            </div>
-            {bill.totalGames > 0 && bill.rate !== bill.rawRate && (
-              <div className="num text-xs text-muted">Exact rate {c}{bill.rawRate.toFixed(4)} rounded to {formatMoney(bill.rate, c)}.</div>
-            )}
-            {bill.totalGames > 0 && settings.playersPerGame > 1 && (
-              <div className={cx('mt-1 text-xs', matches === null ? 'text-warn' : 'text-muted')}>
-                {matches === null
-                  ? `${bill.totalGames} game slots is not a whole number of ${gameKind} matches (${settings.playersPerGame} per game) — worth double-checking the tally.`
-                  : `${bill.totalGames} game slots = ${matches} ${gameKind} ${matches === 1 ? 'match' : 'matches'}.`}
-              </div>
-            )}
-          </div>
-        )}
-        {bill.equalPool > 0 && (
-          <div>
-            <div className="text-xs text-muted">Split equally</div>
-            <div className="num text-lg font-semibold">
-              {formatMoney(bill.equalPool, c)} ÷ {bill.headcount} {bill.headcount === 1 ? 'person' : 'people'} = <span className="text-gold">{formatMoney(bill.equalShare, c)}</span> each
-            </div>
-          </div>
-        )}
-        {bill.perGamePool === 0 && bill.equalPool === 0 && <div className="text-sm text-muted">No shared costs yet.</div>}
-        {bill.variance !== 0 && (
-          <div className="num text-xs text-warn">
-            Rounding puts the bill {formatMoney(Math.abs(bill.variance), c)} {bill.variance > 0 ? 'over' : 'short of'} the actual cost ({formatMoney(bill.expected, c)}).
-          </div>
-        )}
-      </div>
-    </section>
+    </li>
   );
 }
 
-function SummaryCard({ bill, currency }: { bill: SessionBill; currency: string }) {
-  const pct = bill.billed > 0 ? Math.round((bill.collected / bill.billed) * 100) : 0;
+function PaymentRow({ line, currency }: { line: LineBill; currency: string }) {
+  const e = line.entry;
   return (
-    <section className="card p-4">
-      <div className="grid grid-cols-3 gap-2 text-center">
-        <div>
-          <div className="stat-label">To collect</div>
-          <Money value={bill.billed} currency={currency} className="text-xl font-semibold" />
-        </div>
-        <div>
-          <div className="stat-label">Collected</div>
-          <Money value={bill.collected} currency={currency} className="text-xl font-semibold text-ok" />
-        </div>
-        <div>
-          <div className="stat-label">Unpaid</div>
-          <Money value={bill.outstanding} currency={currency} className={cx('text-xl font-semibold', bill.outstanding > 0 ? 'text-bad' : 'text-ok')} />
-        </div>
-      </div>
-      <div className="mt-3 h-2 overflow-hidden rounded-full bg-line">
-        <div className="h-full rounded-full bg-ok transition-all" style={{ width: `${pct}%` }} />
-      </div>
-      <div className="num mt-1.5 text-center text-xs text-muted">
-        {bill.paidCount} of {bill.headcount} paid · {pct}%
-      </div>
-    </section>
+    <li>
+      <button
+        onClick={() => setEntryPaid(e.id, !e.paid)}
+        aria-pressed={e.paid}
+        className={cx(
+          'card flex w-full items-center gap-3 px-3 py-3 text-left transition active:scale-[0.995]',
+          e.paid ? 'border-ok/40 bg-ok-soft/40' : 'hover:border-ink/25',
+        )}
+      >
+        <span
+          className={cx(
+            'grid h-7 w-7 shrink-0 place-items-center rounded-full border text-sm',
+            e.paid ? 'border-ok bg-ok text-white' : 'border-line text-transparent',
+          )}
+        >
+          ✓
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-2">
+            <span className="truncate font-medium">{e.label}</span>
+            {e.isVisitor && <span className="pill shrink-0 bg-warn-soft text-warn">visitor</span>}
+          </span>
+          <span className="num block text-xs text-muted">{pluralGames(e.games)}</span>
+        </span>
+        <span className={cx('num shrink-0 font-semibold', e.paid && 'text-ok')}>{formatMoney(line.total, currency)}</span>
+      </button>
+    </li>
   );
 }
 
 // ---------------------------------------------------------------------------
+// Add people
 
 const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
 
@@ -320,7 +249,9 @@ function AddPeople({ session, entries, players, previous }: { session: Session; 
   const active = players.filter((p) => p.active);
   const inSession = new Set(entries.map((e) => e.playerId).filter(Boolean));
   const missingRegulars = active.filter((p) => p.isRegular && !inSession.has(p.id));
-  const suggestions = [...active.filter((p) => !inSession.has(p.id))].sort((a, b) => Number(b.isRegular) - Number(a.isRegular) || a.name.localeCompare(b.name)).slice(0, 12);
+  const suggestions = [...active.filter((p) => !inSession.has(p.id))]
+    .sort((a, b) => Number(b.isRegular) - Number(a.isRegular) || a.name.localeCompare(b.name))
+    .slice(0, 8);
 
   const onName = (v: string) => {
     setName(v);
@@ -339,11 +270,11 @@ function AddPeople({ session, entries, players, previous }: { session: Session; 
 
   return (
     <form onSubmit={submit} className="card p-3">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center gap-2">
         <input
           ref={inputRef}
           list="roster-names"
-          className="input min-w-[10rem] flex-1"
+          className="input min-w-0 flex-1"
           placeholder="Add a name…"
           value={name}
           onChange={(e) => onName(e.target.value)}
@@ -355,13 +286,15 @@ function AddPeople({ session, entries, players, previous }: { session: Session; 
             <option key={p.id} value={p.name} />
           ))}
         </datalist>
-        <Switch size="sm" checked={visitor} onChange={setVisitor} label="Visitor" />
-        <button className="btn btn-primary" type="submit" disabled={!name.trim()}>
+        <button className="btn btn-primary shrink-0" type="submit" disabled={!name.trim()}>
           Add
         </button>
       </div>
+      <div className="mt-1.5">
+        <Switch size="sm" checked={visitor} onChange={setVisitor} label="Charge visitor fee" />
+      </div>
       {(suggestions.length > 0 || previous) && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
+        <div className="mt-2 flex flex-wrap gap-1.5 border-t border-line pt-2.5">
           {suggestions.map((p) => (
             <button
               type="button"
@@ -387,7 +320,7 @@ function AddPeople({ session, entries, players, previous }: { session: Session; 
               className="chip bg-surface-2 font-semibold hover:bg-line"
               onClick={async () => toast.show(`Added ${await addPeopleFromSession(session.id, previous.id)} from ${formatDateShort(previous.date)}`)}
             >
-              ＋ Same people as {formatDateShort(previous.date)}
+              ＋ Same as {formatDateShort(previous.date)}
             </button>
           )}
         </div>
@@ -396,74 +329,291 @@ function AddPeople({ session, entries, players, previous }: { session: Session; 
   );
 }
 
-function EntryRow({ line, index, count, bill, currency }: { line: LineBill; index: number; count: number; bill: SessionBill; currency: string }) {
-  const [open, setOpen] = useState(false);
-  const e = line.entry;
+// ---------------------------------------------------------------------------
+// Sheets
+
+function CostsSheet({
+  open,
+  onClose,
+  session,
+  bill,
+  settings,
+}: {
+  open: boolean;
+  onClose: () => void;
+  session: Session;
+  bill: SessionBill;
+  settings: Settings;
+}) {
+  const c = settings.currency;
+  const [advanced, setAdvanced] = useState(false);
+  const matches = matchesFromSlots(bill.totalGames, settings.playersPerGame);
+  const gameKind = settings.playersPerGame === 2 ? 'singles' : settings.playersPerGame === 4 ? 'doubles' : `${settings.playersPerGame}-player`;
+
   return (
-    <li className={cx('card p-3', e.paid && 'border-ok/30')}>
-      <div className="flex items-start gap-2.5">
-        <span className="num mt-1 w-5 shrink-0 text-right text-xs text-muted">{index + 1}</span>
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-2">
-            <button type="button" onClick={() => setOpen((o) => !o)} className="truncate py-1 text-left font-medium hover:underline">
-              {e.label}
-            </button>
-            {e.isVisitor && <span className="pill shrink-0 bg-warn-soft text-warn">visitor</span>}
-          </div>
-          <div className="num mt-0.5 text-xs text-muted">{lineFormula(line, bill, currency)}</div>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <Stepper value={e.games} onChange={(v) => updateEntry(e.id, { games: v })} />
-            <Switch size="sm" checked={e.isVisitor} onChange={(v) => updateEntry(e.id, { isVisitor: v })} label="Visitor" />
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen((o) => !o)}>
-              {open ? 'Less' : 'More'}
-            </button>
-          </div>
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-1.5">
-          <Money value={line.total} currency={currency} className="text-lg font-semibold" />
-          <button
-            type="button"
-            onClick={() => setEntryPaid(e.id, !e.paid)}
-            className={cx(
-              'chip border transition',
-              e.paid ? 'border-ok/30 bg-ok-soft text-ok' : 'border-line text-muted hover:border-ink hover:text-ink',
-            )}
-          >
-            {e.paid ? '✓ Paid' : 'Mark paid'}
-          </button>
-        </div>
+    <Sheet open={open} onClose={onClose} title="Costs" subtitle="What the night cost and how it is divided">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Lights">
+          <NumberField prefix={c} value={session.lightsCost} onCommit={(v) => updateSession(session.id, { lightsCost: v })} />
+        </Field>
+        <Field label={settings.visitorFeeLabel} hint="Charged to anyone marked as a visitor">
+          <NumberField prefix={c} value={session.visitorFee} onCommit={(v) => updateSession(session.id, { visitorFee: v })} />
+        </Field>
       </div>
 
-      {open && (
-        <div className="mt-3 grid gap-3 border-t border-line pt-3 sm:grid-cols-3">
-          <Field label="Name on the bill">
-            <TextField value={e.label} onCommit={(v) => updateEntry(e.id, { label: v.trim() || e.label })} />
-          </Field>
-          <Field label="Extra charge / credit" hint="Negative amount = discount">
-            <NumberField prefix={currency} allowNegative value={e.extra} onCommit={(v) => updateEntry(e.id, { extra: v })} />
-          </Field>
-          <Field label="Note for the extra">
-            <TextField value={e.extraNote ?? ''} onCommit={(v) => updateEntry(e.id, { extraNote: v.trim() || undefined })} placeholder="e.g. water, shuttles" />
-          </Field>
-          <div className="flex flex-wrap items-center gap-2 sm:col-span-3">
-            <button className="btn btn-sm" disabled={index === 0} onClick={() => moveEntry(e.id, -1)}>
-              ↑ Up
-            </button>
-            <button className="btn btn-sm" disabled={index === count - 1} onClick={() => moveEntry(e.id, 1)}>
-              ↓ Down
-            </button>
-            {e.playerId && (
-              <Link to={`/players/${e.playerId}`} className="btn btn-ghost btn-sm">
-                Player history
-              </Link>
+      <div className="mt-4 rounded-xl bg-surface-2 p-3">
+        {bill.perGamePool > 0 ? (
+          <>
+            <div className="num text-base font-semibold">
+              {formatMoney(bill.perGamePool, c)} ÷ {pluralGames(bill.totalGames)} = <span className="text-gold">{formatMoney(bill.rate, c)}</span> per game
+            </div>
+            {bill.rate !== bill.rawRate && (
+              <div className="num mt-0.5 text-xs text-muted">Exact rate {c}{bill.rawRate.toFixed(4)}, rounded to {formatMoney(bill.rate, c)}.</div>
             )}
-            <span className="num ml-auto text-xs text-muted">{e.paid && e.paidAt ? `paid ${new Date(e.paidAt).toLocaleString()}` : `${formatNumber(e.games)} × ${formatMoney(bill.rate, currency)}`}</span>
-            <ConfirmButton className="btn-sm" onConfirm={() => removeEntry(e.id)}>
-              Remove
-            </ConfirmButton>
+            {settings.playersPerGame > 1 && bill.totalGames > 0 && (
+              <div className={cx('mt-1 text-xs', matches === null ? 'text-warn' : 'text-muted')}>
+                {matches === null
+                  ? `${bill.totalGames} game slots is not a whole number of ${gameKind} matches. Worth re-checking the tally.`
+                  : `${bill.totalGames} game slots = ${matches} ${gameKind} ${matches === 1 ? 'match' : 'matches'}.`}
+              </div>
+            )}
+          </>
+        ) : (
+          <p className="text-sm text-muted">Enter the lights cost to see the rate per game.</p>
+        )}
+        {bill.equalPool > 0 && (
+          <div className="num mt-2 border-t border-line pt-2 text-base font-semibold">
+            {formatMoney(bill.equalPool, c)} ÷ {bill.headcount} = <span className="text-gold">{formatMoney(bill.equalShare, c)}</span> each
+          </div>
+        )}
+        {bill.variance !== 0 && (
+          <div className="num mt-2 text-xs text-warn">
+            Rounding collects {formatMoney(Math.abs(bill.variance), c)} {bill.variance > 0 ? 'more than' : 'less than'} the {formatMoney(bill.expected, c)} actually spent.
+          </div>
+        )}
+      </div>
+
+      <button className="btn btn-ghost btn-sm mt-4 -ml-2" onClick={() => setAdvanced((a) => !a)}>
+        {advanced ? 'Hide' : 'Show'} other costs and rounding
+      </button>
+
+      {advanced && (
+        <div className="mt-2 space-y-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Split lights">
+              <select className="input" value={session.lightsSplit} onChange={(e) => updateSession(session.id, { lightsSplit: e.target.value as SplitMode })}>
+                <option value="perGame">Per game played</option>
+                <option value="equal">Equally per person</option>
+              </select>
+            </Field>
+            <Field label="Rounding">
+              <select className="input" value={session.rounding} onChange={(e) => updateSession(session.id, { rounding: e.target.value as Rounding })}>
+                <option value="exact">Exact (centavos)</option>
+                <option value="peso">Nearest {c}1</option>
+                <option value="five">Round up to {c}5</option>
+              </select>
+            </Field>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="label mb-0">Other shared costs</span>
+              <button className="btn btn-ghost btn-sm" onClick={() => addOtherCost(session.id, { label: 'Shuttlecocks', amount: 0, split: 'perGame' })}>
+                ＋ Add
+              </button>
+            </div>
+            {session.otherCosts.length === 0 ? (
+              <p className="mt-1 text-xs text-muted">Shuttlecocks, balls, court rental. Each can follow the games or split evenly.</p>
+            ) : (
+              <div className="mt-2 space-y-2">
+                {session.otherCosts.map((cost) => (
+                  <div key={cost.id} className="grid grid-cols-[1fr_auto] gap-2">
+                    <TextField value={cost.label} onCommit={(v) => updateOtherCost(session.id, cost.id, { label: v })} placeholder="What for" />
+                    <button className="btn btn-ghost" aria-label="Remove cost" onClick={() => removeOtherCost(session.id, cost.id)}>
+                      ✕
+                    </button>
+                    <NumberField prefix={c} value={cost.amount} onCommit={(v) => updateOtherCost(session.id, cost.id, { amount: v })} />
+                    <select
+                      className="input w-auto"
+                      value={cost.split}
+                      onChange={(e) => updateOtherCost(session.id, cost.id, { split: e.target.value as SplitMode })}
+                    >
+                      <option value="perGame">Per game</option>
+                      <option value="equal">Equally</option>
+                    </select>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
-    </li>
+    </Sheet>
+  );
+}
+
+function DetailsSheet({ open, onClose, session, sessions }: { open: boolean; onClose: () => void; session: Session; sessions: Session[] }) {
+  const navigate = useNavigate();
+  const toast = useToast();
+  const courts = [...new Set(sessions.map((s) => s.court).filter(Boolean))];
+
+  return (
+    <Sheet open={open} onClose={onClose} title="Session details">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Court">
+          <TextField value={session.court} onCommit={(v) => updateSession(session.id, { court: v.trim() })} list="court-names" placeholder="Court name" />
+          <datalist id="court-names">
+            {courts.map((n) => (
+              <option key={n} value={n} />
+            ))}
+          </datalist>
+        </Field>
+        <Field label="Date">
+          <input type="date" className="input" value={session.date} onChange={(e) => e.target.value && updateSession(session.id, { date: e.target.value })} />
+        </Field>
+      </div>
+
+      <Field label="Note for the group" className="mt-3" hint="Added to the end of the shared message, e.g. your GCash number">
+        <TextAreaField value={session.notes ?? ''} onCommit={(v) => updateSession(session.id, { notes: v || undefined })} placeholder="e.g. GCash 09xx-xxx-xxxx" />
+      </Field>
+
+      <div className="mt-4 flex flex-wrap gap-2 border-t border-line pt-4">
+        <button className="btn" onClick={() => updateSession(session.id, { status: session.status === 'open' ? 'closed' : 'open' })}>
+          {session.status === 'open' ? 'Close session' : 'Reopen session'}
+        </button>
+        <button
+          className="btn"
+          onClick={async () => {
+            const nid = await duplicateSession(session.id);
+            toast.show('New session for today with the same people');
+            onClose();
+            navigate(`/session/${nid}`);
+          }}
+        >
+          Duplicate for today
+        </button>
+        <ConfirmButton
+          className="ml-auto"
+          onConfirm={async () => {
+            await deleteSession(session.id);
+            toast.show('Session deleted');
+            navigate('/');
+          }}
+        >
+          Delete session
+        </ConfirmButton>
+      </div>
+    </Sheet>
+  );
+}
+
+function ShareSheet({
+  open,
+  onClose,
+  session,
+  bill,
+  settings,
+}: {
+  open: boolean;
+  onClose: () => void;
+  session: Session;
+  bill: SessionBill;
+  settings: Settings;
+}) {
+  const toast = useToast();
+  const [showText, setShowText] = useState(false);
+  const message = buildChatMessage(session, bill, settings);
+  const title = `${session.court} ${formatDateShort(session.date)}`;
+
+  return (
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title="Share bill"
+      subtitle="A link anyone can open, or the message to paste in the group chat"
+      footer={
+        <div className="flex gap-2">
+          <button
+            className="btn btn-primary flex-1"
+            onClick={async () => toast.show((await copyText(message)) ? 'Message copied — paste it in the group chat' : 'Could not copy', 'ok')}
+          >
+            Copy message
+          </button>
+          {canShare() && (
+            <button className="btn" onClick={() => void shareText(title, message)}>
+              Share
+            </button>
+          )}
+        </div>
+      }
+    >
+      <ShareCard sessionId={session.id} title={title} />
+      <button className="btn btn-ghost btn-sm mt-3 -ml-2" onClick={() => setShowText((v) => !v)}>
+        {showText ? 'Hide' : 'Preview'} the message
+      </button>
+      {showText && <pre className="num mt-2 whitespace-pre-wrap rounded-xl bg-surface-2 p-3 text-xs leading-relaxed">{message}</pre>}
+    </Sheet>
+  );
+}
+
+function PersonSheet({ line, bill, currency, onClose }: { line?: LineBill; bill: SessionBill; currency: string; onClose: () => void }) {
+  if (!line) return null;
+  const e = line.entry;
+  const lines = bill.lines;
+  const index = lines.findIndex((l) => l.entry.id === e.id);
+
+  return (
+    <Sheet open onClose={onClose} title={e.label} subtitle={`${lineFormula(line, bill, currency)} = ${formatMoney(line.total, currency)}`}>
+      <div className="grid gap-3">
+        <Field label="Name on the bill">
+          <TextField value={e.label} onCommit={(v) => updateEntry(e.id, { label: v.trim() || e.label })} />
+        </Field>
+        <div className="flex flex-wrap items-center gap-4">
+          <Field label="Games" className="w-auto">
+            <Stepper value={e.games} onChange={(v) => updateEntry(e.id, { games: v })} />
+          </Field>
+          <div className="pt-5">
+            <Switch checked={e.isVisitor} onChange={(v) => updateEntry(e.id, { isVisitor: v })} label="Charge visitor fee" />
+          </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Extra charge or discount" hint="Use a negative amount to take money off">
+            <NumberField prefix={currency} allowNegative value={e.extra} onCommit={(v) => updateEntry(e.id, { extra: v })} />
+          </Field>
+          <Field label="What the extra is for">
+            <TextField value={e.extraNote ?? ''} onCommit={(v) => updateEntry(e.id, { extraNote: v.trim() || undefined })} placeholder="e.g. water" />
+          </Field>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
+          <button
+            className={cx('btn', e.paid && 'btn-primary')}
+            onClick={() => setEntryPaid(e.id, !e.paid)}
+          >
+            {e.paid ? '✓ Paid' : 'Mark paid'}
+          </button>
+          <button className="btn btn-sm" disabled={index === 0} onClick={() => moveEntry(e.id, -1)}>
+            ↑
+          </button>
+          <button className="btn btn-sm" disabled={index === lines.length - 1} onClick={() => moveEntry(e.id, 1)}>
+            ↓
+          </button>
+          {e.playerId && (
+            <Link to={`/players/${e.playerId}`} className="btn btn-ghost btn-sm">
+              History
+            </Link>
+          )}
+          <ConfirmButton
+            className="btn-sm ml-auto"
+            onConfirm={async () => {
+              await removeEntry(e.id);
+              onClose();
+            }}
+          >
+            Remove
+          </ConfirmButton>
+        </div>
+      </div>
+    </Sheet>
   );
 }
