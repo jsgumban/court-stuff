@@ -1,0 +1,10 @@
+{
+  "name": "Court Bills",
+  "short_name": "Court Bills",
+  "description": "Split lights and court costs per game, track who has paid.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

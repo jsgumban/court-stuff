@@ -1,0 +1,25 @@
+# Auth settings for the linked project. Push with: npx supabase config push
+# NOTE: config push resets any auth setting NOT listed here back to CLI defaults,
+# so keep every value we care about spelled out.
+project_id = "court-bills"
+
+[auth]
+enable_signup = true
+# Where password-reset and OAuth redirects are allowed to land.
+site_url = "https://court-bills.vercel.app"
+additional_redirect_urls = [
+  "https://court-bills.vercel.app",
+  "http://localhost:5173",
+  "http://localhost:4173",
+]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+
+[auth.email]
+enable_signup = true
+# Single-user app with password sign-in: skip the confirmation email so sign-up works immediately.
+enable_confirmations = false
+secure_password_change = false
+max_frequency = "1m0s"
+otp_length = 8

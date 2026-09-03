@@ -1,0 +1,78 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --color-surface: #ffffff;
+  --color-surface-2: #f5f6f8;
+  --color-ink: #0f172a;
+  --color-muted: #64748b;
+  --color-line: #e5e7eb;
+  --color-accent: #0f172a;
+  --color-accent-fg: #ffffff;
+  --color-gold: #f59e0b;
+  --color-ok: #16a34a;
+  --color-ok-soft: #dcfce7;
+  --color-warn: #d97706;
+  --color-warn-soft: #fef3c7;
+  --color-bad: #dc2626;
+  --color-bad-soft: #fee2e2;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-surface: #111827;
+    --color-surface-2: #0b1220;
+    --color-ink: #e5e7eb;
+    --color-muted: #9ca3af;
+    --color-line: #1f2937;
+    --color-accent: #fbbf24;
+    --color-accent-fg: #111827;
+    --color-ok-soft: #052e16;
+    --color-warn-soft: #3b2506;
+    --color-bad-soft: #3f0d0d;
+  }
+}
+
+@layer base {
+  html { -webkit-tap-highlight-color: transparent; }
+  body {
+    @apply bg-surface-2 text-ink font-sans antialiased;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  input, select, textarea, button { font: inherit; color: inherit; }
+  /* No 300ms tap delay / accidental double-tap zoom on controls. */
+  button, a, input, select, textarea, [role="switch"] { touch-action: manipulation; }
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+}
+
+@layer components {
+  .card { @apply bg-surface border border-line rounded-2xl shadow-sm; }
+  /* 44px tall on touch screens, compact on desktop. */
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-xl px-3.5 py-2 text-sm font-medium
+           min-h-11 md:min-h-0
+           border border-line bg-surface hover:bg-surface-2 active:scale-[0.98] transition
+           disabled:opacity-50 disabled:pointer-events-none select-none whitespace-nowrap;
+  }
+  .btn-primary { @apply bg-accent text-accent-fg border-accent hover:opacity-90; }
+  .btn-ghost { @apply border-transparent bg-transparent hover:bg-surface-2; }
+  .btn-danger { @apply text-bad border-bad/30 hover:bg-bad-soft; }
+  .btn-sm { @apply px-3 py-1.5 text-xs rounded-lg min-h-10 md:min-h-0; }
+  /* 16px text on phones so iOS Safari does not zoom in on focus; 14px from md up. */
+  .input {
+    @apply w-full rounded-xl border border-line bg-surface px-3 py-2.5 text-base md:py-2 md:text-sm
+           min-h-11 md:min-h-0
+           focus:outline-none focus:ring-2 focus:ring-accent/40 placeholder:text-muted;
+  }
+  .label { @apply block text-xs font-medium text-muted mb-1; }
+  .pill { @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium; }
+  /* Tappable pill (chips, paid toggles): comfortable height on touch screens. */
+  .chip {
+    @apply inline-flex min-h-10 items-center gap-1 rounded-full px-3 py-0.5 text-sm font-medium
+           md:min-h-0 md:px-2.5 md:py-1 md:text-xs;
+  }
+  .num { font-variant-numeric: tabular-nums; }
+  .stat-label { @apply text-[11px] uppercase tracking-wide text-muted font-medium; }
+}
