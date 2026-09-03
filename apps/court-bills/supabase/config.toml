@@ -1,14 +1,14 @@
 # Auth settings for the linked project. Push with: npx supabase config push
 # NOTE: config push resets any auth setting NOT listed here back to CLI defaults,
 # so keep every value we care about spelled out.
-project_id = "court-bills"
+project_id = "court-stuff"
 
 [auth]
 enable_signup = true
 # Where password-reset and OAuth redirects are allowed to land.
-site_url = "https://court-bills.vercel.app"
+site_url = "https://court-stuff.vercel.app"
 additional_redirect_urls = [
-  "https://court-bills.vercel.app",
+  "https://court-stuff.vercel.app",
   "http://localhost:5173",
   "http://localhost:4173",
 ]
